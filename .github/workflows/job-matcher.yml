@@ -42,17 +42,25 @@ jobs:
         env:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
         run: |
-          python match.py --config "${{ inputs.config_path || 'config.json' }}"
+          python match.py --config "${{ inputs.config_path || 'config.json' }}" --save-fetched
 
       - name: List outputs
         run: |
           ls -l output || true
 
-      - name: Upload results artifact
+      - name: Upload results artifact (JSON)
         uses: actions/upload-artifact@v4
         with:
-          name: job-matches-${{ github.run_id }}-${{ github.run_attempt }}
+          name: job-matches-json-${{ github.run_id }}-${{ github.run_attempt }}
           path: output/*.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload results artifact (CSV)
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-matches-csv-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/*.csv
           if-no-files-found: warn
           retention-days: 7
 
