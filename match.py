@@ -5,11 +5,22 @@ import re
 import sys
 import csv
 from datetime import datetime
+from urllib.parse import urljoin, urlparse
 from pathlib import Path
 from typing import Any
 
 import requests
 from rapidfuzz import fuzz
+
+# Optional Selenium imports (lazy)
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options as ChromeOptions
+    from selenium.webdriver.common.by import By
+    from webdriver_manager.chrome import ChromeDriverManager
+    SELENIUM_AVAILABLE = True
+except Exception:
+    SELENIUM_AVAILABLE = False
 
 _non_alnum = re.compile(r"[^a-z0-9+#.\-\s]")
 
@@ -28,6 +39,28 @@ def tokenize_for_fuzz(text: str) -> str:
 def load_json(path: Path) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _normalize_country_name(country: str | None) -> tuple[str, list[str]]:
+    if not country:
+        return "", []
+    c = country.strip().lower()
+    if c in {"usa", "us", "u.s.", "united states", "united states of america"}:
+        return "usa", ["united states", "united states of america", "usa", "us", "u.s."]
+    return c, [c]
+
+
+def _matches_country(location_value: str | None, country: str | None) -> bool:
+    if not country:
+        return True
+    if not location_value:
+        return True  # keep if unknown
+    loc = str(location_value).strip().lower()
+    # Always allow fully remote entries
+    if "remote" in loc:
+        return True
+    norm, aliases = _normalize_country_name(country)
+    return any(alias in loc for alias in aliases)
 
 
 def load_jobs(local: str | None, url: str | None, here: Path) -> list[dict[str, Any]]:
@@ -224,6 +257,7 @@ def fetch_lever(companies: list[str], fetch_limit: int) -> list[dict[str, Any]]:
                     "location": loc,
                     "description": desc,
                     "url": job_url,
+                    "careers_url": f"https://jobs.lever.co/{slug}",
                     "source": f"lever:{slug}"
                 })
                 if len(results) >= fetch_limit:
@@ -264,6 +298,7 @@ def fetch_greenhouse(companies: list[str], fetch_limit: int) -> list[dict[str, A
                     "location": loc,
                     "description": desc,
                     "url": job_url,
+                    "careers_url": f"https://boards.greenhouse.io/{slug}",
                     "source": f"greenhouse:{slug}"
                 })
                 if len(results) >= fetch_limit:
@@ -342,7 +377,7 @@ def _arg_present(flag: str) -> bool:
 
 
 def write_csv(rows: list[dict[str, Any]], csv_path: Path) -> None:
-    fields = ["title", "company", "location", "score", "url", "source", "description"]
+    fields = ["title", "company", "location", "score", "url", "careers_url", "source", "description"]
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
@@ -353,9 +388,174 @@ def write_csv(rows: list[dict[str, Any]], csv_path: Path) -> None:
                 "location": r.get("location", ""),
                 "score": r.get("score", ""),
                 "url": r.get("url", ""),
+                "careers_url": r.get("careers_url", ""),
                 "source": r.get("source", ""),
                 "description": (r.get("description", "") or "").replace("\r", " ").replace("\n", " ")
             })
+
+
+def create_headless_driver() -> Any:
+    if not SELENIUM_AVAILABLE:
+        return None
+    chrome_options = ChromeOptions()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    driver = webdriver.Chrome(ChromeDriverManager().install(), options=chrome_options)
+    return driver
+
+
+def fetch_selenium_sites(sites: list[dict[str, Any]], fetch_limit: int) -> list[dict[str, Any]]:
+    if not SELENIUM_AVAILABLE:
+        return []
+    driver = create_headless_driver()
+    if driver is None:
+        return []
+    results: list[dict[str, Any]] = []
+    try:
+        for site in sites or []:
+            url = site.get("url")
+            if not url:
+                continue
+            list_sel = site.get("list_selector") or ""
+            item_sel = site.get("item_selector") or ""
+            title_sel = site.get("title_selector") or ""
+            loc_sel = site.get("location_selector") or ""
+            link_sel = site.get("link_selector") or "a"
+            source = site.get("source") or f"selenium:{url.split('/')[2]}"
+            careers_url = site.get("careers_url") or url
+            domain_filter = site.get("domain_filter") or ""
+            require_path_contains = site.get("require_path_contains") or ""
+            absolute_base = site.get("absolute_base") or url
+
+            driver.get(url)
+            items = []
+            if list_sel:
+                items = driver.find_elements(By.CSS_SELECTOR, list_sel)
+            elif item_sel:
+                items = driver.find_elements(By.CSS_SELECTOR, item_sel)
+            # Fallback to page-level if no container selector
+            if not items:
+                items = [driver]
+
+            for elem in items:
+                try:
+                    title = ""
+                    location = ""
+                    link = ""
+                    # Title
+                    if title_sel:
+                        t_nodes = elem.find_elements(By.CSS_SELECTOR, title_sel)
+                        if t_nodes:
+                            title = t_nodes[0].text.strip()
+                    else:
+                        txt = getattr(elem, 'text', '') or ''
+                        title = txt.strip()
+                    # Location
+                    if loc_sel:
+                        l_nodes = elem.find_elements(By.CSS_SELECTOR, loc_sel)
+                        if l_nodes:
+                            location = l_nodes[0].text.strip()
+                    # Link
+                    l_nodes = elem.find_elements(By.CSS_SELECTOR, link_sel) if link_sel else []
+                    if l_nodes:
+                        link = l_nodes[0].get_attribute("href") or ""
+                    if not link and hasattr(elem, 'get_attribute'):
+                        link = elem.get_attribute('href') or ""
+                    # Normalize relative links
+                    if link and absolute_base and link.startswith('/'):
+                        link = urljoin(absolute_base, link)
+                    # Domain/path filters
+                    if domain_filter:
+                        try:
+                            netloc = urlparse(link).netloc
+                            if domain_filter not in netloc:
+                                continue
+                        except Exception:
+                            pass
+                    if require_path_contains and (require_path_contains not in (link or '')):
+                        continue
+                    # Skip if no title
+                    if not title:
+                        continue
+                    results.append({
+                        "title": title,
+                        "company": site.get("company") or "",
+                        "location": location,
+                        "description": "",
+                        "url": link or url,
+                        "careers_url": careers_url,
+                        "source": source,
+                    })
+                    if len(results) >= fetch_limit:
+                        return results
+                except Exception:
+                    continue
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+    return results
+
+
+def build_selenium_sites_from_company_opts(company_opts: dict[str, Any]) -> list[dict[str, Any]]:
+    sites: list[dict[str, Any]] = []
+    if not company_opts:
+        return sites
+    comp_src = (company_opts.get("company_source") or "").strip().lower()
+    companies = company_opts.get("companies") or []
+    for slug in companies:
+        s = (slug or "").strip()
+        if not s:
+            continue
+        if comp_src == "lever":
+            base = f"https://jobs.lever.co/{s}"
+            sites.append({
+                "url": base,
+                "list_selector": "a[href*='jobs.lever.co']",
+                "title_selector": "",
+                "location_selector": "",
+                "link_selector": "",
+                "company": s,
+                "source": f"selenium:lever:{s}",
+                "careers_url": base,
+                "domain_filter": "lever.co",
+                "require_path_contains": s,
+                "absolute_base": "https://jobs.lever.co"
+            })
+        elif comp_src == "greenhouse":
+            base = f"https://boards.greenhouse.io/{s}"
+            sites.append({
+                "url": base,
+                "list_selector": "a[href*='/jobs/']",
+                "title_selector": "",
+                "location_selector": "",
+                "link_selector": "",
+                "company": s,
+                "source": f"selenium:greenhouse:{s}",
+                "careers_url": base,
+                "domain_filter": "greenhouse.io",
+                "require_path_contains": "/jobs/",
+                "absolute_base": "https://boards.greenhouse.io"
+            })
+        else:
+            # Unknown vendor; attempt a generic careers URL
+            base = f"https://{s}.com/careers"
+            sites.append({
+                "url": base,
+                "list_selector": "a",
+                "title_selector": "",
+                "location_selector": "",
+                "link_selector": "",
+                "company": s,
+                "source": f"selenium:generic:{s}",
+                "careers_url": base,
+                "domain_filter": f"{s}.com",
+                "require_path_contains": "",
+                "absolute_base": base
+            })
+    return sites
 
 
 def main() -> None:
@@ -374,6 +574,7 @@ def main() -> None:
     parser.add_argument("--serpapi-key", default=os.getenv("SERPAPI_KEY"), help="SerpAPI key (optional)")
     parser.add_argument("--query", default=None, help="Search query, e.g., 'Python MLOps Engineer' or 'python|mlops|data'")
     parser.add_argument("--location", default=None, help="Search location (used by some sources)")
+    parser.add_argument("--country", default="usa", help="Country filter (default: usa). Use empty to disable")
     # Company careers
     parser.add_argument("--company-source", choices=list({"lever", "greenhouse"}), default=None, help="Company careers source")
     parser.add_argument("--companies", default=None, help="Comma-separated company slugs (e.g., 'openai,databricks')")
@@ -382,6 +583,7 @@ def main() -> None:
     parser.add_argument("--csv-out", default=None, help="Optional CSV output path; defaults to same as --out with .csv suffix")
     parser.add_argument("--save-fetched", action="store_true", help="Also save all fetched jobs to JSON and CSV")
     parser.add_argument("--run-both", action="store_true", help="Fetch from both free_options and company_options and combine")
+    parser.add_argument("--with-selenium", action="store_true", help="Also fetch from selenium_options.sites if provided")
     args = parser.parse_args()
 
     # Load and merge config if provided (or if default exists)
@@ -424,6 +626,7 @@ def main() -> None:
     free_source = args.free_source or (resolved_cfg.get("source") if resolved_cfg.get("mode") == "free" else None)
     query = args.query or resolved_cfg.get("query")
     location = args.location or resolved_cfg.get("location")
+    country = (resolved_cfg.get("country") or args.country or "usa")
     serpapi_key = args.serpapi_key or resolved_cfg.get("serpapi_key")
     jobs_arg = args.jobs or resolved_cfg.get("jobs")
     jobs_url_arg = args.jobs_url or resolved_cfg.get("jobs_url")
@@ -437,6 +640,7 @@ def main() -> None:
     # Combined options from config
     free_opts = resolved_cfg.get("free_options") or {}
     company_opts = resolved_cfg.get("company_options") or {}
+    selenium_opts = resolved_cfg.get("selenium_options") or {}
     # Default behavior: run both if neither CLI nor config specifies otherwise
     if _arg_present("--run-both"):
         run_both = args.run_both
@@ -510,6 +714,18 @@ def main() -> None:
             if not isinstance(fetched, list):
                 fetched = []
             fetched = fetched[: args.fetch_limit]
+
+    # Optional Selenium fetch
+    use_selenium = args.with_selenium or bool(selenium_opts.get("enabled"))
+    if use_selenium:
+        # Prefer explicit sites; otherwise derive from company_options
+        sites = selenium_opts.get("sites") or build_selenium_sites_from_company_opts(company_opts)
+        if sites:
+            fetched += fetch_selenium_sites(sites, args.fetch_limit)
+
+    # Country filter (lenient, allows 'Remote')
+    if country:
+        fetched = [j for j in fetched if _matches_country(j.get("location"), country)]
 
     # Score and select
     scored = []
