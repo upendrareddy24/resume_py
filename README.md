@@ -69,3 +69,18 @@ crontab -e
 - Config takes precedence unless CLI flags are provided for specific fields.
 - Free sources are public boards; fields vary. Results are filtered by keywords client-side.
 - Matching uses RapidFuzz token-set ratio + title boosts; tune by changing your query and resume content.
+
+
+2The workflow runs python resume_py/match.py with your config every 15 minutes.
+match.py does:
+Loads resume_py/config.json (e.g., top=15, source/query).
+Fetches jobs from the selected source:
+Free: Remotive/RemoteOK/Arbeitnow via public APIs.
+Optional: SerpAPI Google Jobs if key+query provided.
+Fallback: JSON file/URL if configured.
+Scores each job against your resume using RapidFuzz token_set_ratio on concatenated job fields (title/company/location/description), with small boosts for titles containing Python/ML/MLOps/Data Engineer/Full‑Stack.
+Sorts by score, keeps top N, writes JSON to resume_py/output/matches_*.json.
+How you get the results
+Each run uploads the JSON as a GitHub Actions artifact (named like job-matches-<run_id>).
+The job summary also shows a short preview (last lines of the latest JSON).
+Locally, you can run: python resume_py/match.py --config resume_py/config.json and open the file in resume_py/output/.
