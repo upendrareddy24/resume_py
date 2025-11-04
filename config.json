@@ -1,6 +1,7 @@
 {
   "resume": "input/resume.txt",
   "top": 15,
+  "country": "usa",
   "run_both": true,
   "fetch": {
     "mode": "company",
@@ -19,6 +20,50 @@
     "company_source": "lever",
     "companies": ["openai", "jpmorgan", "meta", "mrstanley", "oracle", "uber"],
     "query": "python|mlops|data"
+  },
+  "selenium_options": {
+    "enabled": true,
+    "sites": [
+      {
+        "url": "https://www.metacareers.com/jobs/",
+        "list_selector": "a[href*='/jobs/']",
+        "title_selector": "",
+        "location_selector": "",
+        "link_selector": "",
+        "company": "Meta",
+        "source": "selenium:metacareers",
+        "careers_url": "https://www.metacareers.com/",
+        "domain_filter": "metacareers.com",
+        "require_path_contains": "/jobs/",
+        "absolute_base": "https://www.metacareers.com"
+      },
+      {
+        "url": "https://careers.oracle.com/jobs/",
+        "list_selector": "a[href*='/jobs/']",
+        "title_selector": "",
+        "location_selector": "",
+        "link_selector": "",
+        "company": "Oracle",
+        "source": "selenium:oracle",
+        "careers_url": "https://careers.oracle.com/",
+        "domain_filter": "oracle.com",
+        "require_path_contains": "/jobs/",
+        "absolute_base": "https://careers.oracle.com"
+      },
+      {
+        "url": "https://www.morganstanley.com/careers",
+        "list_selector": "a[href*='/careers']",
+        "title_selector": "",
+        "location_selector": "",
+        "link_selector": "",
+        "company": "Morgan Stanley",
+        "source": "selenium:morganstanley",
+        "careers_url": "https://www.morganstanley.com/careers",
+        "domain_filter": "morganstanley.com",
+        "require_path_contains": "/careers",
+        "absolute_base": "https://www.morganstanley.com"
+      }
+    ]
   },
   "output": {
     "dir": "output",
