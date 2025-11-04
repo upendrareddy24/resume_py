@@ -65,45 +65,4 @@ jobs:
           else
             echo "No output files found." >> $GITHUB_STEP_SUMMARY
 
-name: Resume Job Matcher
-
-on:
-  schedule:
-    - cron: '*/15 * * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  match-jobs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r resume_py/requirements.txt
-
-      - name: Run matcher with config
-        env:
-          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
-        run: |
-          python resume_py/match.py --config resume_py/config.json
-
-      - name: Upload results artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: job-matches-${{ github.run_id }}
-          path: resume_py/output/*.json
-          if-no-files-found: warn
-          retention-days: 7
-
 
