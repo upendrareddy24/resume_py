@@ -203,10 +203,85 @@ def fetch_arbeitnow(query: str | None, fetch_limit: int) -> list[dict[str, Any]]
     return unfiltered[:fetch_limit]
 
 
+# ---------- Company career sources (no auth) ----------
+def fetch_lever(companies: list[str], fetch_limit: int) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for slug in companies:
+        try:
+            url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            posts = resp.json()
+            for p in posts:
+                title = p.get("text") or p.get("title") or ""
+                company = p.get("company") or slug
+                loc = (p.get("categories") or {}).get("location") or ""
+                desc = p.get("descriptionPlain") or ""
+                job_url = p.get("hostedUrl") or p.get("applyUrl") or (p.get("urls", {}) or {}).get("list") or ""
+                results.append({
+                    "title": title,
+                    "company": company,
+                    "location": loc,
+                    "description": desc,
+                    "url": job_url,
+                    "source": f"lever:{slug}"
+                })
+                if len(results) >= fetch_limit:
+                    return results
+        except Exception:
+            continue
+    return results
+
+
+def fetch_greenhouse(companies: list[str], fetch_limit: int) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for slug in companies:
+        try:
+            url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            jobs = data.get("jobs", [])
+            for j in jobs:
+                title = j.get("title") or ""
+                company = slug
+                loc = (j.get("location") or {}).get("name") or ""
+                job_url = j.get("absolute_url") or ""
+                desc = ""
+                try:
+                    job_id = j.get("id")
+                    if job_id:
+                        detail_url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{job_id}?content=true"
+                        dr = requests.get(detail_url, timeout=30)
+                        if dr.ok:
+                            dj = dr.json()
+                            desc = dj.get("content") or ""
+                except Exception:
+                    pass
+                results.append({
+                    "title": title,
+                    "company": company,
+                    "location": loc,
+                    "description": desc,
+                    "url": job_url,
+                    "source": f"greenhouse:{slug}"
+                })
+                if len(results) >= fetch_limit:
+                    return results
+        except Exception:
+            continue
+    return results
+
+
 FREE_SOURCES = {
     "remotive": fetch_remotive,
     "remoteok": fetch_remoteok,
     "arbeitnow": fetch_arbeitnow,
+}
+
+COMPANY_SOURCES = {
+    "lever": fetch_lever,
+    "greenhouse": fetch_greenhouse,
 }
 
 
@@ -229,13 +304,15 @@ def score_job(job: dict[str, Any], resume_text: str) -> float:
 def resolve_from_config(cfg: dict[str, Any]) -> dict[str, Any]:
     # Normalize common fields
     fetch = cfg.get("fetch", {})
-    mode = fetch.get("mode")  # "free" | "serpapi" | "json" | "url"
+    mode = fetch.get("mode")  # "free" | "serpapi" | "json" | "url" | "company"
     source = fetch.get("source")  # e.g., remotive
     query = fetch.get("query")
     location = fetch.get("location")
     jobs_path = fetch.get("jobs")
     jobs_url = fetch.get("jobs_url")
     serpapi_key = fetch.get("serpapi_key") or os.getenv("SERPAPI_KEY")
+    company_source = fetch.get("company_source")
+    companies = fetch.get("companies") or []
 
     return {
         "resume": cfg.get("resume"),
@@ -247,6 +324,8 @@ def resolve_from_config(cfg: dict[str, Any]) -> dict[str, Any]:
         "jobs": jobs_path,
         "jobs_url": jobs_url,
         "serpapi_key": serpapi_key,
+        "company_source": company_source,
+        "companies": companies,
         "output": cfg.get("output", {}),
     }
 
@@ -288,6 +367,9 @@ def main() -> None:
     parser.add_argument("--serpapi-key", default=os.getenv("SERPAPI_KEY"), help="SerpAPI key (optional)")
     parser.add_argument("--query", default=None, help="Search query, e.g., 'Python MLOps Engineer' or 'python|mlops|data'")
     parser.add_argument("--location", default=None, help="Search location (used by some sources)")
+    # Company careers
+    parser.add_argument("--company-source", choices=list({"lever", "greenhouse"}), default=None, help="Company careers source")
+    parser.add_argument("--companies", default=None, help="Comma-separated company slugs (e.g., 'openai,databricks')")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     parser.add_argument("--out", default=str(here / "output" / f"matched_jobs_{ts}.json"), help="Output JSON path")
     parser.add_argument("--csv-out", default=None, help="Optional CSV output path; defaults to same as --out with .csv suffix")
@@ -337,6 +419,12 @@ def main() -> None:
     serpapi_key = args.serpapi_key or resolved_cfg.get("serpapi_key")
     jobs_arg = args.jobs or resolved_cfg.get("jobs")
     jobs_url_arg = args.jobs_url or resolved_cfg.get("jobs_url")
+    company_source = args.company_source or (resolved_cfg.get("company_source") if resolved_cfg.get("mode") == "company" else None)
+    companies_arg = args.companies or None
+    if not companies_arg:
+        cfg_companies = resolved_cfg.get("companies") or []
+    else:
+        cfg_companies = [c.strip() for c in companies_arg.split(",") if c.strip()]
 
     # Output handling (configurable dir/prefix)
     out_cfg = resolved_cfg.get("output", {}) if resolved_cfg else {}
@@ -352,7 +440,12 @@ def main() -> None:
 
     # Fetch jobs according to chosen source
     fetched: list[dict[str, Any]]
-    if free_source and query is not None:
+    if company_source and cfg_companies:
+        fetcher = COMPANY_SOURCES.get(company_source)
+        if not fetcher:
+            raise SystemExit(f"Unknown company source: {company_source}")
+        fetched = fetcher(cfg_companies, args.fetch_limit)
+    elif free_source and query is not None:
         fetcher = FREE_SOURCES.get(free_source)
         if not fetcher:
             raise SystemExit(f"Unknown free source: {free_source}")
