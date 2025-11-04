@@ -1,5 +1,5 @@
 {
-  "resume": "../resume/input/resume.txt",
+  "resume": "resume.txt",
   "top": 15,
   "fetch": {
     "mode": "free",
