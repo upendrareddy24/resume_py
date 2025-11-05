@@ -3,6 +3,7 @@
   "top": 15,
   "country": "usa",
   "run_both": true,
+  "selenium_only": true,
   "fetch": {
     "mode": "company",
     "company_source": "lever",
@@ -11,7 +12,8 @@
   },
   "selenium_options": {
     "enabled": true,
-    "sites": []
+    "sites": ["openai", "jpmorgan", "meta", "mrstanley", "oracle", "adp", "google", "microsoft", "salesforce", "tiktok", "twitter", "uber", "yahoo", "youtube",  "apple", "meta", "netflix", "nvidia", "uber", "yahoo", "youtube", "zoom", "amazon", "jpmorgan"]
+
   },
   "output": {
     "dir": "output",
