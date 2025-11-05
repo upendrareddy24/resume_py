@@ -1,69 +1,17 @@
 {
   "resume": "input/resume.txt",
   "top": 15,
-  "country": "",
-  "run_both": false,
+  "country": "usa",
+  "run_both": true,
   "fetch": {
     "mode": "company",
     "company_source": "lever",
       "companies": ["openai", "jpmorgan", "meta", "mrstanley", "oracle", "adp", "google", "microsoft", "salesforce", "tiktok", "twitter", "uber", "yahoo", "youtube",  "apple", "meta", "netflix", "nvidia", "uber", "yahoo", "youtube", "zoom", "amazon", "jpmorgan"],
-    "query": "python|mlops|data"
-  },
-  "company_options": {
-    "mode": "company",
-    "company_source": "lever",
-    "companies": ["openai", "jpmorgan", "meta", "mrstanley", "oracle", "adp", "google", "microsoft", "salesforce", "tiktok", "twitter", "uber", "yahoo", "youtube",  "apple", "meta", "netflix", "nvidia", "uber", "yahoo", "youtube", "zoom", "amazon", "jpmorgan"],
-    "query": "python|mlops|data"
+    "query": "python|ml|data|engineer"
   },
   "selenium_options": {
     "enabled": true,
-    "sites": [
-      {
-        "url": "https://www.metacareers.com/jobs/",
-        "list_selector": "a[href*='job'], a[href*='/jobs/'], a[href*='/careers/']",
-        "title_selector": "",
-        "location_selector": "",
-        "link_selector": "a",
-        "wait_selector": "a",
-        "sleep_seconds": 4,
-        "company": "Meta",
-        "source": "selenium:metacareers",
-        "careers_url": "https://www.metacareers.com/",
-        "domain_filter": "",
-        "require_path_contains": "",
-        "absolute_base": "https://www.metacareers.com"
-      },
-      {
-        "url": "https://careers.oracle.com/jobs/",
-        "list_selector": "a[href*='job'], a[href*='/jobs/'], a[href*='/careers/']",
-        "title_selector": "",
-        "location_selector": "",
-        "link_selector": "a",
-        "wait_selector": "a",
-        "sleep_seconds": 4,
-        "company": "Oracle",
-        "source": "selenium:oracle",
-        "careers_url": "https://careers.oracle.com/",
-        "domain_filter": "",
-        "require_path_contains": "",
-        "absolute_base": "https://careers.oracle.com"
-      },
-      {
-        "url": "https://www.morganstanley.com/careers",
-        "list_selector": "a[href*='job'], a[href*='/jobs/'], a[href*='/careers/']",
-        "title_selector": "",
-        "location_selector": "",
-        "link_selector": "a",
-        "wait_selector": "a",
-        "sleep_seconds": 4,
-        "company": "Morgan Stanley",
-        "source": "selenium:morganstanley",
-        "careers_url": "https://www.morganstanley.com/careers",
-        "domain_filter": "",
-        "require_path_contains": "",
-        "absolute_base": "https://www.morganstanley.com"
-      }
-    ]
+    "sites": []
   },
   "output": {
     "dir": "output",
