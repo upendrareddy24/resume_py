@@ -46,6 +46,7 @@ jobs:
       - name: Run matcher with config
         env:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python match.py --config "${{ inputs.config_path || 'config.json' }}"
 
@@ -66,6 +67,22 @@ jobs:
         with:
           name: job-matches-csv-${{ github.run_id }}-${{ github.run_attempt }}
           path: output/*.csv
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload cover letters artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cover-letters-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/cover_letters/*.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload tailored resumes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailored-resumes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/tailored_resumes/*.docx
           if-no-files-found: warn
           retention-days: 7
 
