@@ -71,7 +71,7 @@ crontab -e
 - Matching uses RapidFuzz token-set ratio + title boosts; tune by changing your query and resume content.
 
 
-2The workflow runs python resume_py/match.py with your config every 15 minutes.
+The workflow runs python resume_py/match.py with your config every 15 minutes.
 match.py does:
 Loads resume_py/config.json (e.g., top=15, source/query).
 Fetches jobs from the selected source:
@@ -84,3 +84,19 @@ How you get the results
 Each run uploads the JSON as a GitHub Actions artifact (named like job-matches-<run_id>).
 The job summary also shows a short preview (last lines of the latest JSON).
 Locally, you can run: python resume_py/match.py --config resume_py/config.json and open the file in resume_py/output/.
+
+## Cover letter generator
+
+Create a tailored cover letter (.docx) from your resume and a job description:
+
+```bash
+python cover_letter.py \
+  --resume ../resume/input/resume.txt \
+  --jd ../resume/input/jd.txt \
+  --name "Bhavana Nare" \
+  --company "Target Company" \
+  --role "Senior ML Engineer" \
+  --out output/cover_letter.docx
+```
+
+The generator extracts keywords from your resume and the JD, estimates an ATS overlap score, and writes a concise, keyword-rich letter.

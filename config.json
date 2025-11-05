@@ -2,14 +2,32 @@
   "resume": "input/resume.txt",
   "top": 15,
   "country": "usa",
+  "fetch_limit": 500,
   "run_both": true,
   "selenium_only": true,
+  "save_fetched": true,
   "fetch": {
     "mode": "company",
     "company_source": "lever",
-      "companies": ["openai", "jpmorgan", "meta", "mrstanley", "oracle", "adp", "google", "microsoft", "salesforce", "tiktok", "twitter", "uber", "yahoo", "youtube",  "apple", "meta", "netflix", "nvidia", "uber", "yahoo", "youtube", "zoom", "amazon", "jpmorgan"],
+      "companies": ["uber", "apple", "meta", "openai"],
     "query": "python|ml|data|engineer"
   },
+  "free_options": {
+    "mode": "free",
+    "source": "remoteok",
+    "query": "",
+    "location": null
+  },
+  "company_options": {
+    "mode": "company",
+    "company_source": "lever",
+    "companies": ["uber", "apple", "meta", "openai"],
+    "query": ""
+  },
+  "location": "",
+  "jobs": "",
+  "jobs_url": "",
+  "serpapi_key": "",
   "selenium_options": {
     "enabled": true,
     "sites": []
@@ -18,5 +36,29 @@
   "output": {
     "dir": "output",
     "prefix": "matches_daily"
+  },
+  "openai": {
+    "enabled": false,
+    "model": "gpt-4o-mini",
+    "api_key": ""
+  },
+  "auto_tailor_resume": false,
+  "cover_letter": {
+    "resume": "input/resume.txt",
+    "jd": "input/jd.txt",
+    "name": "Bhavana Nare",
+    "company": "",
+    "role": "",
+    "out": "output/cover_letter.docx"
+  },
+  "resume_builder": {
+    "personal_information": "Bhavana Nare | San Jose, USA | 7067159912 | n.bhavana.reddy5@gmail.com | linkedin.com/in/bhavana-nare-60657385 | github.com/Bhavana5N",
+    "education_details": "Master of Computer Science, University of Georgia, GPA 3.7; B.Tech CSE, SVEC, GPA 7.9",
+    "experience_details": "Summaries of roles and measurable outcomes from resume",
+    "projects": "Selected projects with links and impact",
+    "achievements": "Awards and recognitions",
+    "certifications": "Relevant certifications",
+    "additional_skills": "Languages: Python, JavaScript; Skills: AWS, Databricks, MLFlow; Interests: AI Governance",
+    "out": "output/resume_enhanced.docx"
   }
 }

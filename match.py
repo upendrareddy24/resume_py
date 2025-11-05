@@ -11,6 +11,23 @@ from typing import Any
 
 import requests
 from rapidfuzz import fuzz
+try:
+    # centralize config helpers
+    from config import load_json, resolve_from_config  # type: ignore
+except Exception:
+    load_json = None  # will be checked at runtime
+    resolve_from_config = None
+
+try:
+    from resume_builder import tailor_resume_for_job, build_tailored_resume_doc  # type: ignore
+    RESUME_BUILDER_AVAILABLE = True
+except Exception:
+    RESUME_BUILDER_AVAILABLE = False
+try:
+    from cover_letter import CoverLetterBuilder  # local module
+    COVER_LETTER_AVAILABLE = True
+except Exception:
+    COVER_LETTER_AVAILABLE = False
 
 # Optional Selenium imports (lazy)
 try:
@@ -39,9 +56,27 @@ def tokenize_for_fuzz(text: str) -> str:
     return " ".join(t for t in text.split() if len(t) > 1)
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+# Basic tech/role keywords to mine from resume text when no explicit query is provided
+RESUME_KEYWORDS = [
+    "python","java","c++","c#","javascript","typescript","go","rust","sql","nosql",
+    "ml","ai","machine","learning","deep","pytorch","tensorflow","keras","sklearn","scikit",
+    "data","engineer","scientist","analytics","pipeline","etl","airflow","dbt",
+    "aws","azure","gcp","lambda","sagemaker","cloudformation","dynamodb","s3","ec2","kinesis",
+    "docker","kubernetes","terraform","jenkins","ansible","gitlab","github","bitbucket",
+    "graphql","rest","api","django","flask","fastapi","react","nextjs","node","spark","hadoop"
+]
+
+
+def build_query_from_resume(resume_text: str, max_terms: int = 12) -> str:
+    tokens = set(tokenize_for_fuzz(resume_text).split())
+    matched = [kw for kw in RESUME_KEYWORDS if kw in tokens]
+    if not matched:
+        # fallback to a few generic role terms
+        matched = [t for t in tokens if len(t) > 3][:max_terms]
+    return "|".join(matched[:max_terms])
+
+
+## cover-letter free text generation now lives in CoverLetterBuilder.compose_concise_text
 
 
 def _normalize_country_name(country: str | None) -> tuple[str, list[str]]:
@@ -261,52 +296,16 @@ def score_job(job: dict[str, Any], resume_text: str) -> float:
     return float(sim)
 
 
-def resolve_from_config(cfg: dict[str, Any]) -> dict[str, Any]:
-    # Normalize common fields
-    fetch = cfg.get("fetch", {})
-    mode = fetch.get("mode")  # "free" | "serpapi" | "json" | "url" | "company"
-    source = fetch.get("source")  # e.g., remotive
-    query = fetch.get("query")
-    location = fetch.get("location")
-    jobs_path = fetch.get("jobs")
-    jobs_url = fetch.get("jobs_url")
-    serpapi_key = fetch.get("serpapi_key") or os.getenv("SERPAPI_KEY")
-    company_source = fetch.get("company_source")
-    companies = fetch.get("companies") or []
-    # optional combined options
-    free_options = cfg.get("free_options", {})
-    company_options = cfg.get("company_options", {})
-    run_both = bool(cfg.get("run_both", False))
-    selenium_only = bool(cfg.get("selenium_only", False))
-    selenium_options = cfg.get("selenium_options", {})
-
-    return {
-        "resume": cfg.get("resume"),
-        "top": int(cfg.get("top", 10)),
-        "mode": mode,
-        "source": source,
-        "query": query,
-        "location": location,
-        "jobs": jobs_path,
-        "jobs_url": jobs_url,
-        "serpapi_key": serpapi_key,
-        "company_source": company_source,
-        "companies": companies,
-        "output": cfg.get("output", {}),
-        "free_options": free_options,
-        "company_options": company_options,
-        "run_both": run_both,
-        "selenium_only": selenium_only,
-        "selenium_options": selenium_options
-    }
+## resolve_from_config and load_json are provided by config.py
 
 
 def _arg_present(flag: str) -> bool:
-    return any(a == flag or a.startswith(flag + "=") for a in sys.argv)
+    # Only --config is supported now; keep helper for backward-compat if needed
+    return False
 
 
 def write_csv(rows: list[dict[str, Any]], csv_path: Path) -> None:
-    fields = ["title", "company", "location", "score", "url", "careers_url", "source", "description"]
+    fields = ["title", "company", "location", "country", "score", "url", "careers_url", "source", "description"]
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
@@ -315,6 +314,7 @@ def write_csv(rows: list[dict[str, Any]], csv_path: Path) -> None:
                 "title": r.get("title", ""),
                 "company": r.get("company", ""),
                 "location": r.get("location", ""),
+                "country": r.get("country", ""),
                 "score": r.get("score", ""),
                 "url": r.get("url", ""),
                 "careers_url": r.get("careers_url", ""),
@@ -488,11 +488,12 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
 
 
 def build_selenium_sites_from_company_opts(company_opts: dict[str, Any]) -> list[dict[str, Any]]:
+    print(company_opts, "hello")
     sites: list[dict[str, Any]] = []
     if not company_opts:
         return sites
-    companies = company_opts.get("companies") or []
-
+    companies =  company_opts or []
+    print(companies)
     def discover_careers_url(company_slug: str) -> str | None:
         slug = company_slug.lower().strip()
         if not slug:
@@ -548,29 +549,8 @@ def build_selenium_sites_from_company_opts(company_opts: dict[str, Any]) -> list
 
 def main() -> None:
     here = Path(__file__).parent
-    parser = argparse.ArgumentParser(description="Score and list top matching jobs for a given resume.")
-    parser.add_argument("--resume", default=str(here.parent / "resume" / "input" / "resume.txt"), help="Path to resume text file")
-    parser.add_argument("--jobs", default=None, help="Path to jobs JSON (array)")
-    parser.add_argument("--jobs-url", dest="jobs_url", default=None, help="HTTP URL returning JSON jobs array")
-    parser.add_argument("--top", type=int, default=10, help="Top N results")
-    parser.add_argument("--fetch-limit", type=int, default=200, help="Max number of jobs to fetch before scoring")
-    # Config support
-    parser.add_argument("--config", default=None, help="Path to config JSON (overrides defaults)")
-    # Free sources (no API key)
-    parser.add_argument("--free-source", choices=list(FREE_SOURCES.keys()), default=None, help="Use a free jobs source (no API key)")
-    # SerpAPI options (Google Jobs)
-    parser.add_argument("--serpapi-key", default=os.getenv("SERPAPI_KEY"), help="SerpAPI key (optional)")
-    parser.add_argument("--query", default=None, help="Search query, e.g., 'Python MLOps Engineer' or 'python|mlops|data'")
-    parser.add_argument("--location", default=None, help="Search location (used by some sources)")
-    parser.add_argument("--country", default="usa", help="Country filter (default: usa). Use empty to disable")
-    # Company careers
-    parser.add_argument("--company-source", choices=list({"lever", "greenhouse"}), default=None, help="Company careers source")
-    parser.add_argument("--companies", default=None, help="Comma-separated company slugs (e.g., 'openai,databricks')")
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    parser.add_argument("--out", default=str(here / "output" / f"matched_jobs_{ts}.json"), help="Output JSON path")
-    parser.add_argument("--csv-out", default=None, help="Optional CSV output path; defaults to same as --out with .csv suffix")
-    parser.add_argument("--save-fetched", action="store_true", help="Also save all fetched jobs to JSON and CSV")
-    parser.add_argument("--run-both", action="store_true", help="Fetch from both free_options and company_options and combine")
+    parser = argparse.ArgumentParser(description="Score and list top matching jobs for a given resume (config-only).")
+    parser.add_argument("--config", default=None, help="Path to config JSON")
     args = parser.parse_args()
 
     # Load and merge config if provided (or if default exists)
@@ -587,7 +567,7 @@ def main() -> None:
     # 1) if --resume explicitly passed, use it
     # 2) else if config has resume, use it
     # 3) else try common defaults in order
-    resume_path_candidate = args.resume if _arg_present("--resume") else (resolved_cfg.get("resume") or None)
+    resume_path_candidate = resolved_cfg.get("resume") or None
     candidates = [
         resume_path_candidate,
         str(here / "resume.txt"),
@@ -607,39 +587,29 @@ def main() -> None:
             "Tried: " + ", ".join(candidates)
         )
 
-    top_n = args.top if args.top else int(resolved_cfg.get("top", 10))
+    top_n = int(resolved_cfg.get("top", 10))
 
     # Source selection
-    free_source = args.free_source or (resolved_cfg.get("source") if resolved_cfg.get("mode") == "free" else None)
-    query = args.query or resolved_cfg.get("query")
-    location = args.location or resolved_cfg.get("location")
-    country = (resolved_cfg.get("country") or args.country or "usa")
-    serpapi_key = args.serpapi_key or resolved_cfg.get("serpapi_key")
-    jobs_arg = args.jobs or resolved_cfg.get("jobs")
-    jobs_url_arg = args.jobs_url or resolved_cfg.get("jobs_url")
-    company_source = args.company_source or (resolved_cfg.get("company_source") if resolved_cfg.get("mode") == "company" else None)
-    companies_arg = args.companies or None
-    if not companies_arg:
-        cfg_companies = resolved_cfg.get("companies") or []
-    else:
-        cfg_companies = [c.strip() for c in companies_arg.split(",") if c.strip()]
-    print(resolved_cfg)
+    free_source = resolved_cfg.get("source") if resolved_cfg.get("mode") == "free" else None
+    query = resolved_cfg.get("query")
+    location = resolved_cfg.get("location")
+    country = resolved_cfg.get("country") or "usa"
+    serpapi_key = resolved_cfg.get("serpapi_key")
+    jobs_arg = resolved_cfg.get("jobs")
+    jobs_url_arg = resolved_cfg.get("jobs_url")
+    cfg_companies = resolved_cfg.get("companies") or []
     # Combined options from config
     free_opts = resolved_cfg.get("free_options") or {}
     company_opts = resolved_cfg.get("company_options") or {}
     selenium_opts = resolved_cfg.get("selenium_options") or {}
     # Default behavior: run both if neither CLI nor config specifies otherwise
-    if _arg_present("--run-both"):
-        run_both = args.run_both
-    elif "run_both" in resolved_cfg:
-        run_both = bool(resolved_cfg.get("run_both"))
-    else:
-        run_both = True
+    run_both = bool(resolved_cfg.get("run_both", True))
 
     # Output handling (configurable dir/prefix)
     out_cfg = resolved_cfg.get("output", {}) if resolved_cfg else {}
-    out_path = args.out
-    if out_cfg and not _arg_present("--out"):
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_path = str(here / "output" / f"matched_jobs_{ts}.json")
+    if out_cfg:
         out_dir = out_cfg.get("dir")
         prefix = out_cfg.get("prefix", "matched_jobs")
         if out_dir:
@@ -647,6 +617,13 @@ def main() -> None:
             out_path = str(Path(here / out_dir / f"{prefix}_{stamp}.json"))
 
     resume_text = read_text(resume_file)
+    # If no explicit query provided, derive it from the resume content
+    if not query:
+        try:
+            query = build_query_from_resume(resume_text)
+            print("[query] derived from resume:", query)
+        except Exception:
+            query = None
 
     # Fetch jobs according to chosen source(s)
     fetched: list[dict[str, Any]] = []
@@ -670,16 +647,16 @@ def main() -> None:
             free_fetcher = FREE_SOURCES.get(free_src)
             if not free_fetcher:
                 raise SystemExit(f"Unknown free source: {free_src}")
-            fetched += free_fetcher(free_query, args.fetch_limit)
+            fetched += free_fetcher(free_query, int(resolved_cfg.get("fetch_limit", 200)))
         fetched = _dedupe_by_url(fetched)
     else:
         if free_source and query is not None:
             fetcher = FREE_SOURCES.get(free_source)
             if not fetcher:
                 raise SystemExit(f"Unknown free source: {free_source}")
-            fetched = fetcher(query, args.fetch_limit)
+            fetched = fetcher(query, int(resolved_cfg.get("fetch_limit", 200)))
         elif serpapi_key and query:
-            fetched = fetch_serpapi_google_jobs(query, location, serpapi_key, args.fetch_limit)
+            fetched = fetch_serpapi_google_jobs(query, location, serpapi_key, int(resolved_cfg.get("fetch_limit", 200)))
         else:
             fetched = load_jobs(jobs_arg, jobs_url_arg, here)
             if isinstance(fetched, dict) and 'items' in fetched:
@@ -693,7 +670,7 @@ def main() -> None:
     print(use_selenium)
     if use_selenium:
         # Prefer explicit sites; otherwise derive from company_options
-        raw_sites = selenium_opts.get("sites") or build_selenium_sites_from_company_opts(company_opts)
+        raw_sites = selenium_opts.get("sites") or build_selenium_sites_from_company_opts(cfg_companies)
         try:
             def _u(x):
                 return x.get("url") if isinstance(x, dict) else str(x)
@@ -701,7 +678,7 @@ def main() -> None:
         except Exception:
             pass
         if raw_sites:
-            fetched += fetch_selenium_sites(raw_sites, args.fetch_limit)
+            fetched += fetch_selenium_sites(raw_sites, int(resolved_cfg.get("fetch_limit", 200)))
 
     # Country filter (lenient, allows 'Remote')
     if country:
@@ -711,7 +688,9 @@ def main() -> None:
     scored = []
     for job in fetched:
         s = score_job(job, resume_text)
-        scored.append({**job, "score": round(s, 2)})
+        # derive country value for CSV
+        cval = "usa" if _matches_country(job.get("location"), "usa") else ""
+        scored.append({**job, "score": round(s, 2), "country": cval})
     scored.sort(key=lambda x: x["score"], reverse=True)
     top = scored[: top_n]
 
@@ -721,18 +700,18 @@ def main() -> None:
         json.dump(top, f, indent=2)
 
     # CSV path for top N
-    csv_path = Path(args.csv_out) if args.csv_out else out_file.with_suffix('.csv')
+    csv_path = out_file.with_suffix('.csv')
     write_csv(top, csv_path)
 
     # Save fetched list (JSON/CSV) if requested
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     fetched_json = out_file.parent / f"fetched_jobs_{stamp}.json"
     fetched_csv = out_file.parent / f"fetched_jobs_{stamp}.csv"
-    if args.save_fetched:
+    if (resolved_cfg.get("save_fetched") or False):
         with open(fetched_json, "w", encoding="utf-8") as f:
             json.dump(fetched, f, indent=2)
         # add dummy score column for CSV uniformity
-        fetched_rows = [{**j, "score": ""} for j in fetched]
+        fetched_rows = [{**j, "score": "", "country": ("usa" if _matches_country(j.get("location"), "usa") else "")} for j in fetched]
         write_csv(fetched_rows, fetched_csv)
 
     # Always also produce top-50 alongside configured top
@@ -742,6 +721,68 @@ def main() -> None:
     with open(top50_json, "w", encoding="utf-8") as f:
         json.dump(top50, f, indent=2)
     write_csv(top50, top50_csv)
+
+    # Generate cover letters for top 100 (concise, three-paragraph letters; no greeting/signature)
+    if COVER_LETTER_AVAILABLE and top:
+        try:
+            letters_dir = out_file.parent / "cover_letters"
+            letters_dir.mkdir(parents=True, exist_ok=True)
+            # Derive candidate name from resume first non-empty line
+            name_line = next((ln.strip() for ln in resume_text.splitlines() if ln.strip()), "Candidate")
+            builder = CoverLetterBuilder(resume_text, name_line)
+            openai_cfg = resolved_cfg.get("openai") or {}
+            use_openai = bool(openai_cfg.get("enabled"))
+            openai_model = (openai_cfg.get("model") or "").strip()
+            openai_key = (openai_cfg.get("api_key") or os.getenv("OPENAI_API_KEY") or "").strip()
+            
+            # Auto-tailor resume and generate cover letter for jobs with score > 50
+            auto_tailor = bool(resolved_cfg.get("auto_tailor_resume", False))
+            tailored_resumes_dir = out_file.parent / "tailored_resumes"
+            if auto_tailor and RESUME_BUILDER_AVAILABLE:
+                tailored_resumes_dir.mkdir(parents=True, exist_ok=True)
+            
+            for j in top[:100]:
+                score = j.get("score", 0)
+                company = (j.get("company") or "").strip() or "Company"
+                role = (j.get("title") or "").strip() or "Role"
+                jd_text = (j.get("description") or "").strip()
+                base = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{company}_{role}")[:80]
+                
+                # Generate tailored resume if score > 50
+                if auto_tailor and RESUME_BUILDER_AVAILABLE and score > 50:
+                    try:
+                        tailored_text = tailor_resume_for_job(
+                            resume_text, jd_text, company, role, openai_model, openai_key
+                        )
+                        if tailored_text and tailored_text != resume_text:
+                            tailored_doc = build_tailored_resume_doc(tailored_text)
+                            resume_path = tailored_resumes_dir / f"resume_{base}.docx"
+                            tailored_doc.save(resume_path)
+                            # Use tailored resume for cover letter generation
+                            builder_tailored = CoverLetterBuilder(tailored_text, name_line)
+                        else:
+                            builder_tailored = builder
+                    except Exception as e:
+                        print(f"[resume_tailor] error for {company}: {e}")
+                        builder_tailored = builder
+                else:
+                    builder_tailored = builder
+                
+                # Compose concise three-paragraph text letter per rules
+                letter_txt = None
+                if use_openai and openai_model and openai_key:
+                    letter_txt = builder_tailored.compose_openai_text(jd_text, company, role, openai_model, openai_key)
+                if not letter_txt:
+                    letter_txt = builder_tailored.compose_concise_text(jd_text, company, role)
+                txt_path = letters_dir / f"cover_{base}.txt"
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write(letter_txt)
+            
+            print(f"[cover] generated concise cover letters in {letters_dir}")
+            if auto_tailor and RESUME_BUILDER_AVAILABLE:
+                print(f"[resume] generated tailored resumes in {tailored_resumes_dir}")
+        except Exception as e:
+            print("[cover] skipped:", e)
 
     print("Top matches:")
     for j in top:
