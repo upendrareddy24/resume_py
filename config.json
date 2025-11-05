@@ -39,8 +39,7 @@
   },
   "openai": {
     "enabled": true,
-    "model": "gpt-4o-mini",
-    "api_key": ""
+    "model": "gpt-4o-mini"
   },
   "auto_tailor_resume": false,
   "cover_letter": {
