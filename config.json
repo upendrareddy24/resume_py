@@ -38,7 +38,7 @@
     "prefix": "matches_daily"
   },
   "openai": {
-    "enabled": false,
+    "enabled": true,
     "model": "gpt-4o-mini",
     "api_key": ""
   },
