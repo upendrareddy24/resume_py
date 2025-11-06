@@ -76,11 +76,23 @@ def tailor_resume_for_job(
 ) -> str:
     """
     Returns tailored resume text (plain text) optimized for the given JD using OpenAI.
+    Prefers LLMResumer if available, falls back to direct OpenAI client.
     """
-    if not _OPENAI:
-        return resume_text
     key = api_key or os.getenv("OPENAI_API_KEY")
     if not key:
+        return resume_text
+    
+    # Try using LLMResumer first (preferred method)
+    try:
+        from llm_generate_resume import LLMResumer  # type: ignore
+        resumer = LLMResumer(openai_api_key=key)
+        resumer.set_resume_data(resume_text)
+        return resumer.generate_tailored_resume(jd_text, company, role)
+    except Exception as e:
+        print(f"[resume_builder] LLMResumer unavailable ({e}), using fallback")
+    
+    # Fallback to direct OpenAI client
+    if not _OPENAI:
         return resume_text
     try:
         client = OpenAI(api_key=key)

@@ -11,6 +11,13 @@ try:
 except Exception:
     _OPENAI_AVAILABLE = False
 
+try:
+    # Prefer local LLM adapter when available
+    from llm_cover_letter_adapter import LLMCoverLetterJobDescription  # type: ignore
+    _LLM_ADAPTER_AVAILABLE = True
+except Exception:
+    _LLM_ADAPTER_AVAILABLE = False
+
 _non_alnum = re.compile(r"[^a-z0-9+#.\-\s]")
 
 
@@ -188,7 +195,7 @@ def _read_text(path: Path) -> str:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Generate a tailored cover letter (config-only).")
+    ap = argparse.ArgumentParser(description="Generate a tailored cover letter (prefers local LLM adapter when enabled).")
     ap.add_argument("--config", default="config.json", help="Path to config JSON with cover_letter block")
     args = ap.parse_args()
 
@@ -210,7 +217,50 @@ def main() -> None:
     resume_text = _read_text(Path(resume_path))
     jd_text = _read_text(Path(jd_path))
     builder = CoverLetterBuilder(resume_text, name)
-    doc = builder.build_docx(company, role, jd_text)
+
+    # Prefer LLM adapter when enabled and available
+    openai_cfg = cfg.get("openai") or {}
+    use_llm = bool(openai_cfg.get("enabled")) and _LLM_ADAPTER_AVAILABLE
+    api_key = (openai_cfg.get("api_key") or os.getenv("OPENAI_API_KEY") or "").strip()
+
+    doc: Document
+    if use_llm and api_key:
+        try:
+            # Generate body-only cover letter using local adapter
+            adapter = LLMCoverLetterJobDescription(api_key)
+            adapter.set_resume(resume_text)
+            adapter.set_job_description_from_text(jd_text)
+            body_text = adapter.generate_cover_letter().strip()
+
+            # Assemble a clean .docx with greeting/signature around the LLM body
+            doc = Document()
+            today = datetime.now().strftime("%B %d, %Y")
+            doc.add_paragraph(today)
+            doc.add_paragraph("")
+            doc.add_paragraph("Hiring Team")
+            if company:
+                doc.add_paragraph(company)
+            doc.add_paragraph("")
+            greet = f"Dear {company} Hiring Team," if company else "Dear Hiring Manager,"
+            doc.add_paragraph(greet)
+
+            for para in [p.strip() for p in body_text.split("\n\n") if p.strip()]:
+                doc.add_paragraph(para)
+
+            doc.add_paragraph("")
+            doc.add_paragraph("Sincerely,")
+            doc.add_paragraph(name or "Candidate")
+
+            # Add ATS estimate footer for context
+            ats = builder.compute_ats_score(jd_text)
+            doc.add_paragraph("")
+            doc.add_paragraph(f"(Estimated ATS keyword overlap score: ~{ats}%)")
+        except Exception:
+            # Fallback to deterministic builder
+            doc = builder.build_docx(company, role, jd_text)
+    else:
+        # No LLM or missing key → fallback
+        doc = builder.build_docx(company, role, jd_text)
 
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     doc.save(out)

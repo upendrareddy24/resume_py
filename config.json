@@ -3,9 +3,15 @@
   "top": 15,
   "country": "usa",
   "fetch_limit": 500,
-  "run_both": false,
+  "run_both": true,
   "selenium_only": true,
   "save_fetched": true,
+  "companies": ["uber", "apple", "meta", "openai"],
+  "free_options": {
+    "mode": "free",
+    "source": "remoteok",
+    "query": ""
+  },
   "company_options": {
     "mode": "company",
     "company_source": "lever",
@@ -29,7 +35,10 @@
     "enabled": true,
     "model": "gpt-4o-mini"
   },
-  "auto_tailor_resume": false,
+  "use_job_app_generator": true,
+  "use_llm_resumer": false,
+  "auto_tailor_resume": true,
+  "tailor_threshold": 40,
   "cover_letter": {
     "resume": "input/resume.txt",
     "jd": "input/jd.txt",
