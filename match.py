@@ -792,7 +792,7 @@ def main() -> None:
         print(line)
     print("Saved to:", os.path.abspath(out_file))
     print("CSV saved to:", os.path.abspath(csv_path))
-    if args.save_fetched:
+    if resolved_cfg.get("save_fetched"):
         print("Fetched JSON:", os.path.abspath(fetched_json))
         print("Fetched CSV:", os.path.abspath(fetched_csv))
     print("Top50 JSON:", os.path.abspath(top50_json))
