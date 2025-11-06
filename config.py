@@ -19,12 +19,13 @@ def resolve_from_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     jobs_url = fetch.get("jobs_url")
     serpapi_key = fetch.get("serpapi_key") or os.getenv("SERPAPI_KEY")
     company_source = fetch.get("company_source")
-    companies = fetch.get("companies") or []
+    
 
     free_options = cfg.get("free_options", {}) if cfg else {}
     company_options = cfg.get("company_options", {}) if cfg else {}
     run_both = bool(cfg.get("run_both", False)) if cfg else False
     selenium_only = bool(cfg.get("selenium_only", False)) if cfg else False
+    companies = cfg.get("companies") or []
 
     return {
         "resume": cfg.get("resume") if cfg else None,
