@@ -381,6 +381,7 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
             title_sel = site.get("title_selector") or ""
             loc_sel = site.get("location_selector") or ""
             link_sel = site.get("link_selector") or "a"
+            desc_sel = site.get("description_selector") or ""
             source = site.get("source") or f"selenium:{url.split('/')[2]}"
             careers_url = site.get("careers_url") or url
             domain_filter = site.get("domain_filter") or ""
@@ -431,6 +432,7 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                     title = ""
                     location = ""
                     link = ""
+                    description = ""
                     # Title
                     if title_sel:
                         t_nodes = elem.find_elements(By.CSS_SELECTOR, title_sel)
@@ -444,6 +446,11 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                         l_nodes = elem.find_elements(By.CSS_SELECTOR, loc_sel)
                         if l_nodes:
                             location = l_nodes[0].text.strip()
+                    # Description
+                    if desc_sel:
+                        d_nodes = elem.find_elements(By.CSS_SELECTOR, desc_sel)
+                        if d_nodes:
+                            description = d_nodes[0].text.strip()
                     # Link
                     l_nodes = elem.find_elements(By.CSS_SELECTOR, link_sel) if link_sel else []
                     if l_nodes:
@@ -466,11 +473,27 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                     # Skip if no title
                     if not title:
                         continue
+                    
+                    # If no description from list page, try to fetch from job detail page
+                    if not description and link and site.get("fetch_description_from_link"):
+                        try:
+                            driver.get(link)
+                            import time
+                            time.sleep(2)  # Wait for page load
+                            detail_desc_sel = site.get("detail_description_selector") or "body"
+                            desc_nodes = driver.find_elements(By.CSS_SELECTOR, detail_desc_sel)
+                            if desc_nodes:
+                                description = desc_nodes[0].text.strip()[:2000]  # Limit to 2000 chars
+                            driver.back()
+                            time.sleep(1)
+                        except Exception as e:
+                            print(f"  [selenium] failed to fetch description from {link}: {e}")
+                    
                     results.append({
                         "title": title,
                         "company": site.get("company") or "",
                         "location": location,
-                        "description": "",
+                        "description": description,
                         "url": link or url,
                         "careers_url": careers_url,
                         "source": source,
@@ -588,7 +611,7 @@ def main() -> None:
         )
 
     top_n = int(resolved_cfg.get("top", 10))
-
+    print(resolved_cfg)
     # Source selection
     free_source = resolved_cfg.get("source") if resolved_cfg.get("mode") == "free" else None
     query = resolved_cfg.get("query")
@@ -735,21 +758,27 @@ def main() -> None:
             openai_model = (openai_cfg.get("model") or "").strip()
             openai_key = (openai_cfg.get("api_key") or os.getenv("OPENAI_API_KEY") or "").strip()
             
-            # Auto-tailor resume and generate cover letter for jobs with score > 50
+            # Auto-tailor resume and generate cover letter for jobs with score > 40
             auto_tailor = bool(resolved_cfg.get("auto_tailor_resume", False))
+            tailor_threshold = int(resolved_cfg.get("tailor_threshold", 40))
             tailored_resumes_dir = out_file.parent / "tailored_resumes"
             if auto_tailor and RESUME_BUILDER_AVAILABLE:
                 tailored_resumes_dir.mkdir(parents=True, exist_ok=True)
             
-            for j in top[:100]:
+            for idx, j in enumerate(top[:100]):
                 score = j.get("score", 0)
                 company = (j.get("company") or "").strip() or "Company"
                 role = (j.get("title") or "").strip() or "Role"
                 jd_text = (j.get("description") or "").strip()
                 base = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{company}_{role}")[:80]
                 
-                # Generate tailored resume if score > 50
-                if auto_tailor and RESUME_BUILDER_AVAILABLE and score > 50:
+                # Debug: log job details
+                print(f"[cover] {idx+1}/100: {company} - {role} | Score: {score} | JD length: {len(jd_text)} chars")
+                if len(jd_text) < 50:
+                    print(f"  WARNING: Job description too short or empty for {company}")
+                
+                # Generate tailored resume if score > threshold (default 40)
+                if auto_tailor and RESUME_BUILDER_AVAILABLE and score > tailor_threshold:
                     try:
                         tailored_text = tailor_resume_for_job(
                             resume_text, jd_text, company, role, openai_model, openai_key
