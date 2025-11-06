@@ -3,7 +3,7 @@ rapidfuzz==3.9.7
 requests==2.32.3
 selenium==4.24.0
 webdriver-manager==4.0.2
-openai==1.52.2
+openai==1.54.0
 langchain-openai==0.2.8
 langchain-core==0.3.22
 langchain-community==0.3.8
