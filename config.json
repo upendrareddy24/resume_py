@@ -3,7 +3,7 @@
   "top": 15,
   "country": "usa",
   "fetch_limit": 500,
-  "run_both": true,
+  "run_both": false,
   "selenium_only": true,
   "save_fetched": true,
   "company_options": {
