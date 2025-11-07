@@ -406,7 +406,7 @@ class LLMResumer:
         openai_api_key: Optional[str] = None,
         strings: Optional[Any] = None,
         *,
-        model_name: str = "gpt-4o-mini",
+        model: str = "gpt-4o-mini",
         temperature: float = 0.35,
     ) -> None:
         api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -414,16 +414,16 @@ class LLMResumer:
             raise ValueError("OpenAI API key required")
 
         self.api_key = api_key
-        self.model_name = model_name
+        self.model = model
         self.temperature = temperature
         self.llm_resume = ChatOpenAI(
-            model_name=model_name,
-            openai_api_key=api_key,
+            model=model,
+            api_key=api_key,
             temperature=temperature,
         )
         self.llm_cover = ChatOpenAI(
-            model_name=model_name,
-            openai_api_key=api_key,
+            model=model,
+            api_key=api_key,
             temperature=0.45,
         )
 
@@ -433,7 +433,7 @@ class LLMResumer:
         self.resume_keywords: List[str] = []
         self.job_keywords: List[str] = []
         self._resume_context: Dict[str, str] = {}
-        logger.debug("LLMResumer initialized with model {}", model_name)
+        logger.debug("LLMResumer initialized with model {}", model)
 
     @staticmethod
     def _coerce_strings(strings: Optional[Any]) -> ResumePromptLibrary:
@@ -944,7 +944,7 @@ class LLMResumer:
     def __init__(self, openai_api_key, strings):
         self.llm_cheap = LoggerChatModel(
             ChatOpenAI(
-                model_name="gpt-4o-mini", openai_api_key=openai_api_key, temperature=0.4
+                model="gpt-4o-mini", api_key=openai_api_key, temperature=0.4
             )
         )
         self.strings = strings

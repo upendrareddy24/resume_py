@@ -31,6 +31,26 @@
     "dir": "output",
     "prefix": "matches_daily"
   },
+  "autofill": {
+    "enabled": false,
+    "providers": ["workday"],
+    "max_jobs": 1,
+    "headless": false,
+    "wait_seconds": 25,
+    "resume_path": "input/resume.txt",
+    "cover_letter_path": "",
+    "profile": {
+      "first_name": "Bhavana",
+      "last_name": "Nare",
+      "email": "n.bhavana.reddy5@gmail.com",
+      "phone": "7067159912",
+      "address": "",
+      "city": "San Jose",
+      "state": "CA",
+      "postal_code": "",
+      "country": "United States"
+    }
+  },
   "openai": {
     "enabled": true,
     "model": "gpt-4o-mini"

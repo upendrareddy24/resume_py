@@ -75,14 +75,31 @@ try:
     from selenium_scraper import (
         fetch_selenium_sites,
         build_selenium_sites_from_company_opts,
-        SELENIUM_AVAILABLE
+        SELENIUM_AVAILABLE,
+        create_chrome_driver,
     )
 except Exception:
     SELENIUM_AVAILABLE = False
     fetch_selenium_sites = None
     build_selenium_sites_from_company_opts = None
+    create_chrome_driver = None
+
+try:
+    from workday_autofill import (
+        CandidateProfile as WorkdayCandidateProfile,
+        WorkdayAutofill,
+        is_workday_url,
+    )
+    WORKDAY_AUTOFILL_AVAILABLE = True
+except Exception:
+    WORKDAY_AUTOFILL_AVAILABLE = False
+    WorkdayCandidateProfile = None  # type: ignore
+    WorkdayAutofill = None  # type: ignore
+    is_workday_url = lambda _: False  # type: ignore
 
 _non_alnum = re.compile(r"[^a-z0-9+#.\-\s]")
+_html_strip_re = re.compile(r"<[^>]+>")
+_html_script_style_re = re.compile(r"(?is)<(script|style).*?>.*?</\\1>")
 
 
 def read_text(path: Path) -> str:
@@ -194,6 +211,27 @@ def fetch_serpapi_google_jobs(query: str, location: str | None, api_key: str, fe
             "source": "serpapi_google_jobs"
         })
     return results
+
+
+def fetch_job_description_plain(url: str, max_chars: int = 12000) -> str:
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+            )
+        }
+        resp = requests.get(url, timeout=20, headers=headers)
+        resp.raise_for_status()
+        html_text = resp.text
+    except Exception:
+        return ""
+    cleaned = _html_script_style_re.sub(" ", html_text)
+    cleaned = _html_strip_re.sub(" ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return ""
+    return cleaned[:max_chars]
 
 
 # ---------- Free sources (no API key required) ----------
@@ -443,6 +481,7 @@ def main() -> None:
 
     # Fetch jobs according to chosen source(s)
     fetched: list[dict[str, Any]] = []
+    job_assets: dict[str, dict[str, Any]] = {}
 
     def _dedupe_by_url(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen: set[str] = set()
@@ -621,6 +660,12 @@ def main() -> None:
                 jd_text = (j.get("description") or "").strip()
                 job_url = (j.get("url") or "").strip()
                 base = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{company}_{role}")[:80]
+                key_primary = job_url or base
+                assets = job_assets.setdefault(key_primary, {"base": base})
+                if job_url:
+                    job_assets[job_url] = assets
+                assets["company"] = company
+                assets["role"] = role
                 llm_resume_generated = False
                 llm_resume_text = None
                 builder_tailored = builder
@@ -690,6 +735,14 @@ def main() -> None:
                         j["description"] = jd_text
                     if html_parsed_info.get("required_skills"):
                         j["parsed_required_skills"] = html_parsed_info["required_skills"].strip()
+                    assets["company"] = company
+                    assets["role"] = role
+
+                if (not jd_text or len(jd_text) < 200) and job_url:
+                    fallback_desc = fetch_job_description_plain(job_url)
+                    if fallback_desc:
+                        jd_text = fallback_desc
+                        j["description"] = jd_text
 
                 # Debug: log job details
                 print(f"[cover] {idx+1}/100: {company} - {role} | Score: {score} | JD length: {len(jd_text)} chars")
@@ -779,6 +832,7 @@ def main() -> None:
                                 f.write(cover_letter_llm)
                             llm_cover_generated = True
                             builder_tailored = None
+                            assets["cover_letter"] = str(txt_path)
                             print(f"  [llm] Cover letter saved for {company} using LLMResumer")
                     except Exception as e:
                         print(f"  [llm] Cover letter generation failed for {company}: {e}")
@@ -795,12 +849,14 @@ def main() -> None:
                             resume_path = tailored_resumes_dir / f"resume_{base}.txt"
                             with open(resume_path, "w", encoding="utf-8") as f:
                                 f.write(result["resume"])
+                            assets["resume"] = str(resume_path)
                         
                         # Save cover letter
                         if result.get("cover_letter"):
                             txt_path = letters_dir / f"cover_{base}.txt"
                             with open(txt_path, "w", encoding="utf-8") as f:
                                 f.write(result["cover_letter"])
+                            assets["cover_letter"] = str(txt_path)
                         
                         # Optionally save job summary
                         if result.get("job_summary"):
@@ -809,6 +865,7 @@ def main() -> None:
                             summary_path = summary_dir / f"summary_{base}.txt"
                             with open(summary_path, "w", encoding="utf-8") as f:
                                 f.write(result["job_summary"])
+                            assets["job_summary"] = str(summary_path)
                         
                         jobgen_success = True
                     except Exception as e:
@@ -830,6 +887,7 @@ def main() -> None:
                                     f.write(llm_resume_text)
                                 llm_resume_generated = True
                                 print(f"  [llm] Tailored resume saved for {company} using LLMResumer")
+                                assets["resume"] = str(resume_path)
                         except Exception as e:
                             print(f"  [llm] Tailored resume generation failed for {company}: {e}")
                     write_llm_cover_letter()
@@ -852,6 +910,7 @@ def main() -> None:
                                 f.write(resume_text_llm)
                             llm_resume_text = resume_text_llm
                             llm_resume_generated = True
+                            assets["resume"] = str(resume_path)
                         
                         if cover_letter_llm:
                             txt_path = letters_dir / f"cover_{base}.txt"
@@ -859,6 +918,7 @@ def main() -> None:
                                 f.write(cover_letter_llm)
                             llm_cover_generated = True
                             builder_tailored = None
+                            assets["cover_letter"] = str(txt_path)
                         
                         continue  # Skip to next job
                     except Exception as e:
@@ -875,6 +935,7 @@ def main() -> None:
                             tailored_doc = build_tailored_resume_doc(tailored_text)
                             resume_path = tailored_resumes_dir / f"resume_{base}.docx"
                             tailored_doc.save(resume_path)
+                            assets["resume"] = str(resume_path)
                             if should_force_llm_resume and not llm_resume_generated:
                                 try:
                                     llm_resume_text = (
@@ -890,6 +951,7 @@ def main() -> None:
                                             f.write(llm_resume_text)
                                         llm_resume_generated = True
                                         print(f"  [llm] Tailored resume saved for {company} using LLMResumer")
+                                        assets["resume"] = str(resume_txt_path)
                                 except Exception as e:
                                     print(f"  [llm] Tailored resume generation failed for {company}: {e}")
                             if COVER_LETTER_AVAILABLE:
@@ -915,6 +977,7 @@ def main() -> None:
                                 f.write(llm_resume_text)
                             llm_resume_generated = True
                             print(f"  [llm] Tailored resume saved for {company} using LLMResumer")
+                            assets["resume"] = str(resume_txt_path)
                             if COVER_LETTER_AVAILABLE:
                                 builder_tailored = CoverLetterBuilder(llm_resume_text, name_line)
                     except Exception as e:
@@ -932,6 +995,7 @@ def main() -> None:
                             txt_path = letters_dir / f"cover_{base}.txt"
                             with open(txt_path, "w", encoding="utf-8") as f:
                                 f.write(letter_txt)
+                            assets["cover_letter"] = str(txt_path)
                             continue  # Skip to next job
                     except Exception as e:
                         print(f"  [llmcover] Error for {company}: {e}. Falling back.")
@@ -948,12 +1012,95 @@ def main() -> None:
                         txt_path = letters_dir / f"cover_{base}.txt"
                         with open(txt_path, "w", encoding="utf-8") as f:
                             f.write(letter_txt)
+                        assets["cover_letter"] = str(txt_path)
             
             print(f"[cover] generated cover letters in {letters_dir}")
             if auto_tailor:
                 print(f"[resume] generated tailored resumes in {tailored_resumes_dir}")
         except Exception as e:
             print("[cover] skipped:", e)
+    autofill_cfg = resolved_cfg.get("autofill") or {}
+    if autofill_cfg.get("enabled"):
+        if not SELENIUM_AVAILABLE:
+            print("[autofill] Selenium not available; skipping Workday autofill.")
+        elif not WORKDAY_AUTOFILL_AVAILABLE:
+            print("[autofill] Workday autofill module not available; skipping.")
+        else:
+            providers = {
+                str(p).strip().lower()
+                for p in (autofill_cfg.get("providers") or ["workday"])
+            }
+            if "workday" in providers:
+                try:
+                    profile = WorkdayCandidateProfile.from_mapping(
+                        autofill_cfg.get("profile") or {}
+                    )
+                except Exception as e:
+                    print(f"[autofill] {e}. Skipping Workday autofill.")
+                else:
+                    workday_jobs = [job for job in top if is_workday_url(job.get("url"))]
+                    if not workday_jobs:
+                        print("[autofill] No Workday apply links detected in top matches.")
+                    else:
+                        max_jobs = int(autofill_cfg.get("max_jobs", 1))
+                        if max_jobs <= 0:
+                            max_jobs = len(workday_jobs)
+                        headless = bool(autofill_cfg.get("headless", False))
+                        wait_seconds = int(autofill_cfg.get("wait_seconds", 20))
+                        resume_default = (autofill_cfg.get("resume_path") or "").strip() or None
+                        cover_default = (autofill_cfg.get("cover_letter_path") or "").strip() or None
+
+                        def _asset_key(job: dict[str, Any]) -> str:
+                            url = (job.get("url") or "").strip()
+                            if url:
+                                return url
+                            raw = f"{job.get('company','')}_{job.get('title','')}"
+                            return re.sub(r"[^A-Za-z0-9._-]+", "_", raw).strip("_") or raw or "job"
+
+                        try:
+                            def _driver_factory():
+                                if not create_chrome_driver:
+                                    raise RuntimeError("Chrome driver factory unavailable")
+                                return create_chrome_driver(headless=headless)
+
+                            with WorkdayAutofill(
+                                _driver_factory,
+                                profile,
+                                wait_seconds=wait_seconds,
+                                verbose=True,
+                            ) as autofiller:
+                                applied = 0
+                                for job in workday_jobs:
+                                    if applied >= max_jobs:
+                                        break
+                                    job_url = (job.get("url") or "").strip()
+                                    if not job_url:
+                                        continue
+                                    key = _asset_key(job)
+                                    assets = job_assets.get(job_url) or job_assets.get(key) or {}
+                                    resume_path = assets.get("resume") or resume_default
+                                    cover_path = assets.get("cover_letter") or cover_default
+                                    if resume_path:
+                                        resume_path = str(Path(resume_path).expanduser())
+                                    if cover_path:
+                                        cover_path = str(Path(cover_path).expanduser())
+                                    print(
+                                        f"[autofill] Attempting Workday autofill for "
+                                        f"{job.get('company','?')} - {job.get('title','?')}"
+                                    )
+                                    try:
+                                        autofiller.fill_application(
+                                            job_url,
+                                            resume_path=resume_path,
+                                            cover_letter_path=cover_path,
+                                        )
+                                        job["autofill_status"] = "success"
+                                        applied += 1
+                                    except Exception as e:
+                                        job["autofill_status"] = f"error: {e}"
+                                        print(f"[autofill] Failed for {job_url}: {e}")
+                        except Exception as e:
+                            print(f"[autofill] Unable to start Workday automation: {e}")
     print("Top matches:")
     for j in top:
         line = f"- [{j['score']}] {j.get('title','')} @ {j.get('company','')} ({j.get('location','')})"

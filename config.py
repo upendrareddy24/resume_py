@@ -64,6 +64,7 @@ def resolve_from_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "run_both": run_both,
         "selenium_only": selenium_only,
         "selenium_options": (cfg or {}).get("selenium_options", {}),
+        "autofill": (cfg or {}).get("autofill", {}),
         "openai": (cfg or {}).get("openai", {}),
     }
 

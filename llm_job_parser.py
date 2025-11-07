@@ -20,7 +20,7 @@ from pathlib import Path
 from langchain_core.prompt_values import StringPromptValue
 from langchain_core.runnables import RunnablePassthrough
 from langchain_text_splitters import TokenTextSplitter
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from lib_resume_builder_AIHawk.config import global_config
 from langchain_community.document_loaders import TextLoader
@@ -42,10 +42,13 @@ class LLMParser:
     def __init__(self, openai_api_key):
         self.llm = LoggerChatModel(
             ChatOpenAI(
-                model_name="gpt-4o-mini", openai_api_key=openai_api_key, temperature=0.4
+                model="gpt-4o-mini", api_key=openai_api_key, temperature=0.4
             )
         )
-        self.llm_embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # Initialize embeddings
+        self.llm_embeddings = OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            api_key=openai_api_key,
+        )  # Initialize embeddings
         self.vectorstore = None  # Will be initialized after document loading
 
     @staticmethod
@@ -126,7 +129,7 @@ class LLMParser:
         prompt = ChatPromptTemplate.from_template(
             template="""
             You are an expert in extracting specific information from job descriptions. 
-            Carefully read the job description context below and provide a clear and concise answer to the question.
+            Carefully read the job description roles and responsibilities context below and provide a clear and concise answer to the question.
 
             Context: {context}
 

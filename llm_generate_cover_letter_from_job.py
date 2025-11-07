@@ -32,8 +32,13 @@ logger.add(log_path / "gpt_cover_letter_job_descr.log", rotation="1 day", compre
 
 class LLMCoverLetterJobDescription:
     def __init__(self, openai_api_key, strings):
-        self.llm_cheap = LoggerChatModel(ChatOpenAI(model_name="gpt-4o-mini", openai_api_key=openai_api_key, temperature=0.4))
-        self.llm_embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
+        self.llm_cheap = LoggerChatModel(
+            ChatOpenAI(model="gpt-4o-mini", api_key=openai_api_key, temperature=0.4)
+        )
+        self.llm_embeddings = OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            api_key=openai_api_key,
+        )
         self.strings = strings
 
     @staticmethod

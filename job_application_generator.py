@@ -33,8 +33,8 @@ class JobApplicationGenerator:
             raise ValueError("OpenAI API key required")
         
         self.llm = ChatOpenAI(
-            model_name="gpt-4o-mini",
-            openai_api_key=api_key,
+            model="gpt-4o-mini",
+            api_key=api_key,
             temperature=0.4
         )
         self.resume_text = None

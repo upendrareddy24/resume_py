@@ -16,20 +16,26 @@ except Exception:
     SELENIUM_AVAILABLE = False
 
 
-def create_headless_driver() -> Any:
+def create_chrome_driver(headless: bool = True, window_size: str = "1920,1080") -> Any:
     if not SELENIUM_AVAILABLE:
         return None
     chrome_options = ChromeOptions()
-    chrome_options.add_argument("--headless=new")
+    if headless:
+        chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
+    if window_size:
+        chrome_options.add_argument(f"--window-size={window_size}")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36")
     service = ChromeService(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.implicitly_wait(5)
     return driver
+
+
+def create_headless_driver() -> Any:
+    return create_chrome_driver(headless=True)
 
 
 def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, Any]]:

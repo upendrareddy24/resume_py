@@ -117,6 +117,13 @@ python resume_builder.py
 
 Reads `resume_builder` block from `config.json` and generates an enhanced resume using OpenAI (if enabled).
 
+### Workday Autofill (experimental)
+
+- Enable `autofill.enabled` in `config.json` to let Selenium pre-populate Workday application forms for top matches.
+- Provide your contact details under `autofill.profile` along with optional `resume_path` and `cover_letter_path` overrides.
+- Set `max_jobs` to control how many Workday links run per execution; start with `headless: false` to observe the browser flow.
+- The helper fills standard personal info fields and uploads resumes/letters but still requires manual completion for logins, questionnaires, or assessments.
+
 ## Configuration Guide
 
 ### config.json Structure

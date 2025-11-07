@@ -32,11 +32,14 @@ class LLMCoverLetterJobDescription:
             raise ValueError("OpenAI API key required")
         
         self.llm = ChatOpenAI(
-            model_name="gpt-4o-mini",
-            openai_api_key=api_key,
+            model="gpt-4o-mini",
+            api_key=api_key,
             temperature=0.4
         )
-        self.llm_embeddings = OpenAIEmbeddings(openai_api_key=api_key)
+        self.llm_embeddings = OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            api_key=api_key,
+        )
         self.resume: Optional[str] = None
         self.job_description: Optional[str] = None
 
