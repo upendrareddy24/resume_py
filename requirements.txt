@@ -3,10 +3,10 @@ rapidfuzz==3.10.1
 requests==2.32.3
 selenium==4.26.1
 webdriver-manager==4.0.2
-openai==1.58.1
-langchain-openai==0.3.0
-langchain-core==0.3.30
-langchain-community==0.3.15
-langchain-text-splitters==0.3.4
+openai
+langchain-openai
+langchain-core
+langchain-community
+langchain-text-splitters
 faiss-cpu==1.9.0
 python-dotenv==1.0.1
