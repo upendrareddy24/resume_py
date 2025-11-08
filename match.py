@@ -1164,22 +1164,25 @@ def main() -> None:
                             assets["resume"] = str(resume_path)
                             print(f"  [jobgen] ✅ Resume saved: {resume_path.name}")
                             
-                            # Generate PDF version
+                            # Generate PDF and DOCX versions using helper
                             try:
-                                from pdf_generator import generate_resume_pdf
-                                pdf_path = tailored_resumes_dir / f"resume_{base}.pdf"
-                                success = generate_resume_pdf(
-                                    content=result["resume"],
-                                    output_path=str(pdf_path),
+                                from resume_upload_helper import create_and_save_resume_files
+                                file_paths = create_and_save_resume_files(
+                                    resume_text=result["resume"],
+                                    output_dir=str(tailored_resumes_dir),
                                     job_title=role,
                                     company_name=company,
-                                    candidate_name=""  # Will be extracted from resume
+                                    candidate_name="",  # Will be extracted from resume
+                                    formats=['pdf', 'docx']  # Generate both formats
                                 )
-                                if success:
-                                    assets["resume_pdf"] = str(pdf_path)
-                                    print(f"  [jobgen] ✅ Resume PDF saved: {pdf_path.name}")
+                                if file_paths.get('docx'):
+                                    assets["resume_docx"] = file_paths['docx']
+                                    print(f"  [jobgen] ✅ Resume DOCX saved: {os.path.basename(file_paths['docx'])}")
+                                if file_paths.get('pdf'):
+                                    assets["resume_pdf"] = file_paths['pdf']
+                                    print(f"  [jobgen] ✅ Resume PDF saved: {os.path.basename(file_paths['pdf'])}")
                             except Exception as pdf_err:
-                                print(f"  [jobgen] ⚠️  PDF generation failed: {pdf_err}")
+                                print(f"  [jobgen] ⚠️  Document generation failed: {pdf_err}")
                         
                         # Save cover letter (TXT)
                         if result.get("cover_letter"):
@@ -1189,22 +1192,21 @@ def main() -> None:
                             assets["cover_letter"] = str(txt_path)
                             print(f"  [jobgen] ✅ Cover letter saved: {txt_path.name}")
                             
-                            # Generate PDF version
+                            # Generate PDF version using helper
                             try:
-                                from pdf_generator import generate_cover_letter_pdf
-                                pdf_path = letters_dir / f"cover_{base}.pdf"
-                                success = generate_cover_letter_pdf(
-                                    content=result["cover_letter"],
-                                    output_path=str(pdf_path),
+                                from resume_upload_helper import create_and_save_cover_letter_pdf
+                                pdf_path_abs = create_and_save_cover_letter_pdf(
+                                    cover_letter_text=result["cover_letter"],
+                                    output_dir=str(letters_dir),
                                     job_title=role,
                                     company_name=company,
-                                    candidate_name="",  # Will be extracted
+                                    candidate_name="",
                                     candidate_email="",
                                     candidate_phone=""
                                 )
-                                if success:
-                                    assets["cover_letter_pdf"] = str(pdf_path)
-                                    print(f"  [jobgen] ✅ Cover letter PDF saved: {pdf_path.name}")
+                                if pdf_path_abs:
+                                    assets["cover_letter_pdf"] = pdf_path_abs
+                                    print(f"  [jobgen] ✅ Cover letter PDF saved: {os.path.basename(pdf_path_abs)}")
                             except Exception as pdf_err:
                                 print(f"  [jobgen] ⚠️  PDF generation failed: {pdf_err}")
                         

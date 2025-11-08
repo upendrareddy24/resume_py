@@ -21,9 +21,7 @@
     "data engineer",
     "devops engineer"
   ],
-  "target_locations": [
-    "united states"
-  ],
+  "target_locations": [],
   "free_options": {
     "mode": "free",
     "source": "remoteok",

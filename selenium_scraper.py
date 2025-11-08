@@ -167,18 +167,22 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
             try:
                 last_height = driver.execute_script("return document.body.scrollHeight")
                 scroll_attempts = 0
-                max_scrolls = 3  # Scroll down 3 times to load more jobs
+                max_scrolls = 5  # Scroll down 5 times to load more jobs
                 
                 while scroll_attempts < max_scrolls:
                     # Scroll to bottom
                     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                    time.sleep(1)  # Wait for content to load
+                    time.sleep(2)  # Wait longer for content to load
                     
                     # Calculate new height and compare
                     new_height = driver.execute_script("return document.body.scrollHeight")
                     if new_height == last_height:
-                        # No more content loaded
-                        break
+                        # Try one more time in case content is still loading
+                        time.sleep(1)
+                        new_height = driver.execute_script("return document.body.scrollHeight")
+                        if new_height == last_height:
+                            # No more content loaded
+                            break
                     last_height = new_height
                     scroll_attempts += 1
                 

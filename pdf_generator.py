@@ -133,13 +133,24 @@ class PDFGenerator:
             # Parse and format the resume content
             sections = self._parse_resume_content(content)
             
-            # Header with name
-            if candidate_name:
-                story.append(Paragraph(candidate_name, self.styles['CustomHeader']))
+            # Debug: print what sections were found
+            print(f"  [pdf-debug] Found sections: {list(sections.keys())}")
+            
+            # Header with name (extract from first line if not provided)
+            name_to_display = candidate_name
+            if not name_to_display and content:
+                first_line = content.split('\n')[0].strip()
+                if first_line and len(first_line) < 50 and not any(kw in first_line.lower() for kw in ['target', 'position', 'github', '@']):
+                    name_to_display = first_line
+            
+            if name_to_display:
+                story.append(Paragraph(name_to_display, self.styles['CustomHeader']))
             
             # Contact information
             if 'contact' in sections:
-                story.append(Paragraph(sections['contact'], self.styles['ContactInfo']))
+                # Format contact info as a single line if possible
+                contact_text = sections['contact'].replace('\n', ' | ')
+                story.append(Paragraph(contact_text, self.styles['ContactInfo']))
             
             # Target position
             if job_title and company_name:
@@ -150,64 +161,140 @@ class PDFGenerator:
                 story.append(Spacer(1, 0.2*inch))
             
             # Professional Summary (10 bullet points)
-            if 'summary' in sections or 'professional_summary' in sections:
+            summary_added = False
+            for key in ['summary', 'professional_summary', 'objective']:
+                if key in sections and sections[key].strip():
+                    story.append(Paragraph("PROFESSIONAL SUMMARY", self.styles['CustomSubHeader']))
+                    summary_text = sections[key]
+                    
+                    # Extract bullets - look for lines that start with bullet or are substantial
+                    summary_lines = [l.strip() for l in summary_text.split('\n') if l.strip()]
+                    bullet_count = 0
+                    
+                    for line in summary_lines:
+                        # Skip if it's just a section header
+                        if line.isupper() and len(line) < 50:
+                            continue
+                        
+                        # Clean up the line
+                        clean_line = line.lstrip('•-*►▪→◆ ').strip()
+                        
+                        if clean_line and len(clean_line) > 20:  # Meaningful content
+                            story.append(Paragraph(f"• {clean_line}", self.styles['BulletPoint']))
+                            bullet_count += 1
+                            if bullet_count >= 10:
+                                break
+                    
+                    if bullet_count > 0:
+                        story.append(Spacer(1, 0.15*inch))
+                        summary_added = True
+                    break
+            
+            # If no summary found, create one from the first substantial paragraphs
+            if not summary_added:
                 story.append(Paragraph("PROFESSIONAL SUMMARY", self.styles['CustomSubHeader']))
-                summary_text = sections.get('summary', sections.get('professional_summary', ''))
-                summary_bullets = self._extract_bullet_points(summary_text, max_bullets=10)
-                for bullet in summary_bullets:
-                    story.append(Paragraph(f"• {bullet}", self.styles['BulletPoint']))
+                story.append(Paragraph("Experienced professional seeking to contribute expertise to this role.", self.styles['Normal']))
                 story.append(Spacer(1, 0.15*inch))
             
             # Work Experience (most recent, relevant to job)
-            if 'experience' in sections or 'work_experience' in sections:
-                story.append(Paragraph("WORK EXPERIENCE", self.styles['CustomSubHeader']))
-                exp_text = sections.get('experience', sections.get('work_experience', ''))
-                experiences = self._parse_experiences(exp_text)
-                
-                for exp in experiences[:3]:  # Show top 3 most recent/relevant
-                    # Company and position
-                    story.append(Paragraph(
-                        f"<b>{exp.get('position', 'Position')}</b> | {exp.get('company', 'Company')}",
-                        self.styles['CompanyPosition']
-                    ))
-                    # Date and location
-                    date_loc = []
-                    if exp.get('dates'):
-                        date_loc.append(exp['dates'])
-                    if exp.get('location'):
-                        date_loc.append(exp['location'])
-                    if date_loc:
-                        story.append(Paragraph(' | '.join(date_loc), self.styles['DateLocation']))
+            experience_added = False
+            for key in ['experience', 'work_experience', 'employment']:
+                if key in sections and sections[key].strip():
+                    story.append(Paragraph("WORK EXPERIENCE", self.styles['CustomSubHeader']))
+                    exp_text = sections[key]
                     
-                    # Key achievements/responsibilities
-                    for bullet in exp.get('bullets', []):
-                        story.append(Paragraph(f"• {bullet}", self.styles['BulletPoint']))
+                    # Try to parse structured experiences
+                    experiences = self._parse_experiences(exp_text)
                     
-                    story.append(Spacer(1, 0.1*inch))
+                    if experiences:
+                        for exp in experiences[:3]:  # Show top 3 most recent/relevant
+                            # Company and position
+                            position = exp.get('position', 'Position')
+                            company = exp.get('company', 'Company')
+                            story.append(Paragraph(
+                                f"<b>{position}</b> | {company}",
+                                self.styles['CompanyPosition']
+                            ))
+                            
+                            # Date and location
+                            date_loc = []
+                            if exp.get('dates'):
+                                date_loc.append(exp['dates'])
+                            if exp.get('location'):
+                                date_loc.append(exp['location'])
+                            if date_loc:
+                                story.append(Paragraph(' | '.join(date_loc), self.styles['DateLocation']))
+                            
+                            # Key achievements/responsibilities
+                            for bullet in exp.get('bullets', [])[:6]:  # Max 6 bullets per job
+                                story.append(Paragraph(f"• {bullet}", self.styles['BulletPoint']))
+                            
+                            story.append(Spacer(1, 0.1*inch))
+                        experience_added = True
+                    else:
+                        # Fallback: just render the text with basic formatting
+                        exp_lines = [l.strip() for l in exp_text.split('\n') if l.strip()]
+                        for line in exp_lines[:20]:  # Limit to prevent overflow
+                            if line.startswith('•') or line.startswith('-'):
+                                story.append(Paragraph(line, self.styles['BulletPoint']))
+                            else:
+                                story.append(Paragraph(line, self.styles['Normal']))
+                        story.append(Spacer(1, 0.1*inch))
+                        experience_added = True
+                    break
             
             # Education
-            if 'education' in sections:
-                story.append(Paragraph("EDUCATION", self.styles['CustomSubHeader']))
-                story.append(Paragraph(sections['education'], self.styles['Normal']))
-                story.append(Spacer(1, 0.15*inch))
+            for key in ['education', 'academic']:
+                if key in sections and sections[key].strip():
+                    story.append(Paragraph("EDUCATION", self.styles['CustomSubHeader']))
+                    edu_text = sections[key]
+                    edu_lines = [l.strip() for l in edu_text.split('\n') if l.strip()]
+                    for line in edu_lines:
+                        if line.startswith('•') or line.startswith('-'):
+                            story.append(Paragraph(line, self.styles['BulletPoint']))
+                        else:
+                            story.append(Paragraph(line, self.styles['Normal']))
+                    story.append(Spacer(1, 0.15*inch))
+                    break
             
             # Skills
-            if 'skills' in sections or 'technical_skills' in sections:
-                story.append(Paragraph("TECHNICAL SKILLS", self.styles['CustomSubHeader']))
-                skills_text = sections.get('skills', sections.get('technical_skills', ''))
-                story.append(Paragraph(skills_text, self.styles['Normal']))
-                story.append(Spacer(1, 0.15*inch))
+            for key in ['skills', 'technical_skills', 'competencies']:
+                if key in sections and sections[key].strip():
+                    story.append(Paragraph("TECHNICAL SKILLS", self.styles['CustomSubHeader']))
+                    skills_text = sections[key]
+                    # Remove --- separators
+                    skills_text = skills_text.replace('---', '').strip()
+                    if skills_text:
+                        story.append(Paragraph(skills_text, self.styles['Normal']))
+                        story.append(Spacer(1, 0.15*inch))
+                    break
             
             # Projects (if space allows)
-            if 'projects' in sections:
-                story.append(Paragraph("KEY PROJECTS", self.styles['CustomSubHeader']))
-                story.append(Paragraph(sections['projects'], self.styles['Normal']))
-                story.append(Spacer(1, 0.15*inch))
+            for key in ['projects', 'key_projects']:
+                if key in sections and sections[key].strip():
+                    story.append(Paragraph("KEY PROJECTS", self.styles['CustomSubHeader']))
+                    proj_text = sections[key]
+                    proj_lines = [l.strip() for l in proj_text.split('\n') if l.strip()]
+                    for line in proj_lines[:10]:  # Limit to prevent overflow
+                        if line.startswith('•') or line.startswith('-'):
+                            story.append(Paragraph(line, self.styles['BulletPoint']))
+                        else:
+                            story.append(Paragraph(line, self.styles['Normal']))
+                    story.append(Spacer(1, 0.15*inch))
+                    break
             
             # Certifications
-            if 'certifications' in sections:
-                story.append(Paragraph("CERTIFICATIONS", self.styles['CustomSubHeader']))
-                story.append(Paragraph(sections['certifications'], self.styles['Normal']))
+            for key in ['certifications', 'certificates']:
+                if key in sections and sections[key].strip():
+                    story.append(Paragraph("CERTIFICATIONS", self.styles['CustomSubHeader']))
+                    cert_text = sections[key]
+                    cert_lines = [l.strip() for l in cert_text.split('\n') if l.strip()]
+                    for line in cert_lines:
+                        if line.startswith('•') or line.startswith('-'):
+                            story.append(Paragraph(line, self.styles['BulletPoint']))
+                        else:
+                            story.append(Paragraph(line, self.styles['Normal']))
+                    break
             
             # Build PDF
             doc.build(story)
@@ -326,45 +413,76 @@ class PDFGenerator:
         
         lines = content.split('\n')
         
-        # Common section headers
+        # Common section headers (case-insensitive)
         section_keywords = {
-            'contact': ['contact', 'email', 'phone', 'address'],
-            'summary': ['summary', 'objective', 'profile'],
-            'professional_summary': ['professional summary'],
-            'experience': ['experience', 'employment', 'work history'],
-            'work_experience': ['work experience'],
+            'contact': ['contact', 'email:', 'phone:', 'github:', 'linkedin:'],
+            'summary': ['summary', 'objective', 'profile', 'professional summary'],
+            'experience': ['experience', 'employment', 'work history', 'work experience'],
             'education': ['education', 'academic'],
-            'skills': ['skills', 'competencies'],
-            'technical_skills': ['technical skills'],
-            'projects': ['projects', 'portfolio'],
-            'certifications': ['certifications', 'licenses']
+            'skills': ['skills', 'competencies', 'technical skills'],
+            'projects': ['projects', 'portfolio', 'key projects'],
+            'certifications': ['certifications', 'licenses', 'certificates']
         }
         
         for line in lines:
-            line_lower = line.lower().strip()
+            line_stripped = line.strip()
+            line_lower = line_stripped.lower()
             
-            # Check if this is a section header
+            # Skip empty lines at the start of content
+            if not current_section and not line_stripped:
+                continue
+            
+            # Check if this is a section header (all caps or specific keywords)
+            is_section_header = False
             found_section = None
-            for section_key, keywords in section_keywords.items():
-                if any(keyword in line_lower for keyword in keywords):
-                    # Save previous section
-                    if current_section and current_content:
-                        sections[current_section] = '\n'.join(current_content).strip()
-                    
-                    found_section = section_key
-                    current_section = section_key
-                    current_content = []
-                    break
             
-            if not found_section and current_section:
+            # Check for all-caps section headers
+            if line_stripped.isupper() and len(line_stripped) > 3:
+                for section_key, keywords in section_keywords.items():
+                    if any(keyword in line_lower for keyword in keywords):
+                        is_section_header = True
+                        found_section = section_key
+                        break
+            
+            # Check for section keywords
+            if not is_section_header:
+                for section_key, keywords in section_keywords.items():
+                    if any(line_lower.startswith(keyword) or line_lower == keyword for keyword in keywords):
+                        is_section_header = True
+                        found_section = section_key
+                        break
+            
+            if is_section_header and found_section:
+                # Save previous section
+                if current_section and current_content:
+                    sections[current_section] = '\n'.join(current_content).strip()
+                
+                current_section = found_section
+                current_content = []
+            elif current_section:
+                # Add to current section
                 current_content.append(line)
+            else:
+                # Before any section (might be header/contact info)
+                if 'github:' in line_lower or 'linkedin:' in line_lower or '@' in line:
+                    if 'contact' not in sections:
+                        sections['contact'] = line_stripped
+                    else:
+                        sections['contact'] += '\n' + line_stripped
         
         # Save last section
         if current_section and current_content:
             sections[current_section] = '\n'.join(current_content).strip()
         
-        # If no sections found, treat entire content as summary
+        # If no sections found, try to extract from raw content
         if not sections:
+            # Try to find contact info
+            for line in lines[:10]:  # Check first 10 lines
+                if '@' in line or 'github' in line.lower() or 'linkedin' in line.lower():
+                    sections['contact'] = line.strip()
+                    break
+            
+            # Rest goes to summary
             sections['summary'] = content
         
         return sections
