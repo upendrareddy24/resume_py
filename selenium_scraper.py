@@ -229,14 +229,83 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                     link = ""
                     description = ""
                     
-                    # Title
+                    # Title extraction - try multiple methods
+                    # Method 1: Use title_selector
                     if title_sel:
-                        t_nodes = elem.find_elements(By.CSS_SELECTOR, title_sel)
-                        if t_nodes:
-                            title = t_nodes[0].text.strip()
-                    else:
-                        txt = getattr(elem, 'text', '') or ''
-                        title = txt.strip()
+                        try:
+                            # Try each selector in the comma-separated list
+                            for sel in title_sel.split(','):
+                                sel = sel.strip()
+                                t_nodes = elem.find_elements(By.CSS_SELECTOR, sel)
+                                if t_nodes:
+                                    title = t_nodes[0].text.strip()
+                                    if title:
+                                        print(f"  [selenium-debug] Title Method 1 ({sel}) found: {title[:50]}")
+                                        break
+                        except Exception as e:
+                            print(f"  [selenium-debug] Title Method 1 failed: {e}")
+                    
+                    # Method 2: Try common title patterns if still no title
+                    if not title:
+                        try:
+                            # Try h1-h6 tags
+                            for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                                headings = elem.find_elements(By.TAG_NAME, tag)
+                                if headings:
+                                    title = headings[0].text.strip()
+                                    if title:
+                                        print(f"  [selenium-debug] Title Method 2 ({tag}) found: {title[:50]}")
+                                        break
+                        except Exception:
+                            pass
+                    
+                    # Method 3: Try aria-label or title attribute
+                    if not title:
+                        try:
+                            title = elem.get_attribute("aria-label") or elem.get_attribute("title") or ""
+                            title = title.strip()
+                            if title:
+                                print(f"  [selenium-debug] Title Method 3 (aria-label/title) found: {title[:50]}")
+                        except Exception:
+                            pass
+                    
+                    # Method 4: Try data attributes
+                    if not title:
+                        try:
+                            for attr in ['data-title', 'data-job-title', 'data-name', 'data-label']:
+                                title = elem.get_attribute(attr) or ""
+                                title = title.strip()
+                                if title:
+                                    print(f"  [selenium-debug] Title Method 4 (data-{attr}) found: {title[:50]}")
+                                    break
+                        except Exception:
+                            pass
+                    
+                    # Method 5: Get text from element itself (fallback)
+                    if not title:
+                        try:
+                            txt = getattr(elem, 'text', '') or ''
+                            # Get first non-empty line
+                            lines = [l.strip() for l in txt.split('\n') if l.strip()]
+                            if lines:
+                                title = lines[0][:200]  # Limit length
+                                print(f"  [selenium-debug] Title Method 5 (element text) found: {title[:50]}")
+                        except Exception:
+                            pass
+                    
+                    # Method 6: Extract from URL if still no title
+                    if not title and link:
+                        try:
+                            # Try to extract meaningful part from URL
+                            from urllib.parse import urlparse
+                            parsed = urlparse(link)
+                            path_parts = [p for p in parsed.path.split('/') if p and p not in ['jobs', 'job', 'careers', 'en', 'us', 'details']]
+                            if path_parts:
+                                # Use last meaningful part, replace dashes/underscores with spaces
+                                title = path_parts[-1].replace('-', ' ').replace('_', ' ').title()
+                                print(f"  [selenium-debug] Title Method 6 (from URL) found: {title[:50]}")
+                        except Exception:
+                            pass
                     
                     # Location
                     if loc_sel:
@@ -256,14 +325,18 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                         l_nodes = elem.find_elements(By.CSS_SELECTOR, link_sel)
                         if l_nodes:
                             link = l_nodes[0].get_attribute("href") or ""
-                            if link:
+                            if link and not link.startswith('javascript:'):
                                 print(f"  [selenium-debug] Method 1 (link_sel) found: {link[:80]}")
+                            elif link.startswith('javascript:'):
+                                link = ""  # Reset invalid JavaScript links
                     
                     # Method 2: Check if element itself is a link
                     if not link and hasattr(elem, 'get_attribute'):
                         link = elem.get_attribute('href') or ""
-                        if link:
+                        if link and not link.startswith('javascript:'):
                             print(f"  [selenium-debug] Method 2 (elem href) found: {link[:80]}")
+                        elif link.startswith('javascript:'):
+                            link = ""  # Reset invalid JavaScript links
                     
                     # Method 3: Find anchor tag within element
                     if not link:
@@ -272,14 +345,38 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                             if anchors:
                                 for anchor in anchors:
                                     href = anchor.get_attribute("href") or ""
-                                    if href:
+                                    if href and not href.startswith('javascript:'):
                                         link = href
                                         print(f"  [selenium-debug] Method 3 (anchor tag) found: {link[:80]}")
                                         break
                         except Exception as e:
                             print(f"  [selenium-debug] Method 3 failed: {e}")
                     
-                    # Method 4: If element is clickable, try to get URL from onclick or data attributes
+                    # Method 4: Check data attributes (BEFORE onclick, as they're more reliable)
+                    if not link:
+                        try:
+                            for attr in ['data-url', 'data-href', 'data-link', 'data-job-url', 'data-jobid', 'data-id']:
+                                data_url = elem.get_attribute(attr) or ""
+                                if data_url:
+                                    # If it's a relative path, make it absolute
+                                    if data_url.startswith('/'):
+                                        data_url = urljoin(absolute_base, data_url)
+                                    # If it's just an ID, construct URL
+                                    elif not data_url.startswith('http') and '/' not in data_url:
+                                        # Try common patterns
+                                        if '/jobs/' in absolute_base or '/careers/' in absolute_base:
+                                            data_url = urljoin(absolute_base, f"/jobs/{data_url}")
+                                        else:
+                                            data_url = urljoin(absolute_base, f"/{data_url}")
+                                    
+                                    if data_url.startswith('http'):
+                                        link = data_url
+                                        print(f"  [selenium-debug] Method 4 (data-{attr}) found: {link[:80]}")
+                                        break
+                        except Exception:
+                            pass
+                    
+                    # Method 5: If element is clickable, try to get URL from onclick
                     if not link:
                         try:
                             onclick = elem.get_attribute("onclick") or ""
@@ -288,18 +385,35 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                                 urls = re.findall(r'https?://[^\s\'"]+', onclick)
                                 if urls:
                                     link = urls[0]
-                                    print(f"  [selenium-debug] Method 4 (onclick) found: {link[:80]}")
+                                    print(f"  [selenium-debug] Method 5 (onclick) found: {link[:80]}")
                         except Exception:
                             pass
                     
-                    # Method 5: Check data attributes
+                    # Method 6: Try to find job ID and construct URL
                     if not link:
                         try:
-                            for attr in ['data-url', 'data-href', 'data-link', 'href']:
-                                data_url = elem.get_attribute(attr) or ""
-                                if data_url and data_url.startswith('http'):
-                                    link = data_url
-                                    print(f"  [selenium-debug] Method 5 (data-{attr}) found: {link[:80]}")
+                            # Look for job ID in various attributes
+                            job_id = None
+                            for attr in ['id', 'data-id', 'data-job-id', 'data-jobid', 'aria-label']:
+                                val = elem.get_attribute(attr) or ""
+                                # Extract numeric ID
+                                import re
+                                id_match = re.search(r'\d+', val)
+                                if id_match:
+                                    job_id = id_match.group(0)
+                                    break
+                            
+                            if job_id:
+                                # Try common URL patterns
+                                base_patterns = [
+                                    f"{absolute_base}/jobs/{job_id}",
+                                    f"{absolute_base}/job/{job_id}",
+                                    f"{absolute_base}/careers/{job_id}",
+                                    f"{absolute_base}/en-us/jobs/{job_id}",
+                                ]
+                                for pattern in base_patterns:
+                                    link = pattern
+                                    print(f"  [selenium-debug] Method 6 (constructed from ID {job_id}) found: {link[:80]}")
                                     break
                         except Exception:
                             pass
@@ -322,10 +436,15 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                         print(f"  [selenium-debug] Skipping link (path filter): {link[:60]}...")
                         continue
                     
-                    # Skip if no title
-                    if not title:
-                        print(f"  [selenium-debug] Skipping item {idx+1} (no title), link: {link[:60] if link else 'N/A'}...")
+                    # Skip only if we have neither title nor valid URL
+                    if not title and not (link and link.startswith('http')):
+                        print(f"  [selenium-debug] Skipping item {idx+1} (no title and no valid URL)")
                         continue
+                    
+                    # If we have URL but no title, create a fallback title
+                    if not title and link and link.startswith('http'):
+                        title = f"Job at {site.get('company', 'Company')}"
+                        print(f"  [selenium-debug] Using fallback title: {title}")
                     
                     # Debug: Log URL extraction result
                     if not link:
@@ -371,34 +490,52 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                     print(f"  [selenium-debug] Traceback: {traceback.format_exc()[:200]}")
                     continue
             
-            print(f"[selenium-debug] Processed {processed_count} items from {len(items)} containers, extracted {len(results)} jobs with URLs")
+            # Count jobs with valid URLs (not javascript: or empty)
+            valid_url_count = sum(1 for r in results if r.get("url") and r.get("url").startswith("http"))
+            jobs_with_titles = sum(1 for r in results if r.get("title") and r.get("title").strip() and not r.get("title", "").startswith("Job at"))
+            print(f"[selenium-debug] Processed {processed_count} items from {len(items)} containers, extracted {len(results)} jobs ({valid_url_count} with valid URLs, {jobs_with_titles} with real titles)")
             
-            # If we didn't get enough jobs with URLs, try LLM extraction as fallback
-            if len(results) < 3 and LLM_JOB_LIST_EXTRACTOR_AVAILABLE:
+            # If we didn't get enough jobs with VALID URLs AND real titles, try LLM extraction as fallback
+            if (valid_url_count < 3 or jobs_with_titles < 3) and LLM_JOB_LIST_EXTRACTOR_AVAILABLE:
                 try:
                     openai_key = os.getenv("OPENAI_API_KEY")
                     if openai_key:
-                        print(f"[selenium-debug] ⚠️ Only found {len(results)} jobs with URLs, trying LLM extraction...")
+                        reason = []
+                        if valid_url_count < 3:
+                            reason.append(f"{valid_url_count} valid URLs")
+                        if jobs_with_titles < 3:
+                            reason.append(f"{jobs_with_titles} real titles")
+                        print(f"[selenium-debug] ⚠️ Only found {', '.join(reason)}, trying LLM extraction...")
                         page_source = driver.page_source
                         llm_extractor = LLMJobListExtractor(openai_key)
                         llm_jobs = llm_extractor.extract_jobs_from_html(
                             page_source,
                             url,
                             site.get("company"),
-                            max_jobs=20
+                            max_jobs=30
                         )
                         
                         # Add LLM-extracted jobs that we don't already have
-                        existing_urls = {r.get("url") for r in results}
+                        existing_urls = {r.get("url") for r in results if r.get("url") and r.get("url").startswith("http")}
+                        llm_added = 0
                         for llm_job in llm_jobs:
-                            if llm_job.get("url") and llm_job.get("url") not in existing_urls:
+                            llm_url = llm_job.get("url", "")
+                            if llm_url and llm_url.startswith("http") and llm_url not in existing_urls:
                                 results.append(llm_job)
-                                existing_urls.add(llm_job.get("url"))
-                                print(f"  [selenium-debug] ✅ LLM extracted: {llm_job.get('title', 'N/A')[:50]} -> {llm_job.get('url', 'N/A')[:80]}")
+                                existing_urls.add(llm_url)
+                                llm_added += 1
+                                print(f"  [selenium-debug] ✅ LLM extracted: {llm_job.get('title', 'N/A')[:50]} -> {llm_url[:80]}")
                         
-                        print(f"[selenium-debug] LLM extraction added {len(llm_jobs)} jobs, total now: {len(results)}")
+                        print(f"[selenium-debug] LLM extraction added {llm_added} jobs with valid URLs, total now: {len([r for r in results if r.get('url') and r.get('url').startswith('http')])}")
+                        
+                        # Remove jobs without valid URLs if we got LLM results
+                        if llm_added > 0:
+                            results[:] = [r for r in results if r.get("url") and r.get("url").startswith("http")]
+                            print(f"[selenium-debug] Cleaned up: {len(results)} jobs with valid URLs remaining")
                 except Exception as e:
                     print(f"[selenium-debug] LLM extraction failed: {type(e).__name__}: {e}")
+                    import traceback
+                    print(f"[selenium-debug] Traceback: {traceback.format_exc()[:300]}")
     finally:
         try:
             driver.quit()
