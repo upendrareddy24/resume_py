@@ -674,10 +674,13 @@ def main() -> None:
             # Filter jobs by score threshold FIRST to avoid wasting time
             score_threshold = float(resolved_cfg.get("min_score", 60))
             target_roles = resolved_cfg.get("target_roles", [])
+            target_locations = resolved_cfg.get("target_locations", [])
             
             print(f"[filter] Filtering jobs with score >= {score_threshold}")
             if target_roles:
                 print(f"[filter] Target roles: {', '.join(target_roles)}")
+            if target_locations:
+                print(f"[filter] Target locations: {', '.join(target_locations[:5])}{'...' if len(target_locations) > 5 else ''}")
             
             # Filter by score
             filtered_jobs = [j for j in top[:100] if j.get("score", 0) >= score_threshold]
@@ -699,8 +702,25 @@ def main() -> None:
                 else:
                     print(f"[filter] WARNING: No jobs match target roles. Processing all {len(filtered_jobs)} jobs above score threshold.")
             
+            # Additionally filter by target locations if specified
+            if target_locations and filtered_jobs:
+                location_matched_jobs = []
+                for j in filtered_jobs:
+                    job_location = (j.get("location") or "").lower()
+                    # Check if job location contains any of the target locations
+                    for target_loc in target_locations:
+                        if target_loc.lower() in job_location:
+                            location_matched_jobs.append(j)
+                            break
+                
+                if location_matched_jobs:
+                    print(f"[filter] {len(location_matched_jobs)} jobs match target locations (out of {len(filtered_jobs)})")
+                    filtered_jobs = location_matched_jobs
+                else:
+                    print(f"[filter] WARNING: No jobs match target locations. Processing all {len(filtered_jobs)} jobs.")
+            
             if not filtered_jobs:
-                print(f"[filter] WARNING: No jobs above score threshold {score_threshold}. Lowering to 40.")
+                print(f"[filter] WARNING: No jobs after filtering. Lowering score to 40.")
                 filtered_jobs = [j for j in top[:100] if j.get("score", 0) >= 40]
                 
                 # Try role filtering again with lowered score threshold
@@ -714,6 +734,18 @@ def main() -> None:
                                 break
                     if role_matched_jobs:
                         filtered_jobs = role_matched_jobs
+                
+                # Try location filtering again
+                if target_locations and filtered_jobs:
+                    location_matched_jobs = []
+                    for j in filtered_jobs:
+                        job_location = (j.get("location") or "").lower()
+                        for target_loc in target_locations:
+                            if target_loc.lower() in job_location:
+                                location_matched_jobs.append(j)
+                                break
+                    if location_matched_jobs:
+                        filtered_jobs = location_matched_jobs
             
             print(f"[filter] Processing {len(filtered_jobs)} jobs (out of {len(top[:100])} total)")
             
