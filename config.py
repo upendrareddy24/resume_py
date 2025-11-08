@@ -49,6 +49,9 @@ def resolve_from_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "top": int((cfg or {}).get("top", 10)),
         "country": (cfg or {}).get("country", "usa"),
         "fetch_limit": int((cfg or {}).get("fetch_limit", 200)),
+        "min_score": float((cfg or {}).get("min_score", 60)),
+        "top_per_company": bool((cfg or {}).get("top_per_company", False)),
+        "parallel_workers": int((cfg or {}).get("parallel_workers", 5)),
         "mode": mode,
         "source": source,
         "query": query,
@@ -58,6 +61,8 @@ def resolve_from_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "serpapi_key": serpapi_key,
         "company_source": company_source,
         "companies": companies,
+        "target_roles": (cfg or {}).get("target_roles", []),
+        "target_locations": (cfg or {}).get("target_locations", []),
         "output": (cfg or {}).get("output", {}),
         "free_options": free_options,
         "company_options": company_options,
@@ -66,6 +71,11 @@ def resolve_from_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "selenium_options": (cfg or {}).get("selenium_options", {}),
         "autofill": (cfg or {}).get("autofill", {}),
         "openai": (cfg or {}).get("openai", {}),
+        "auto_tailor_resume": bool((cfg or {}).get("auto_tailor_resume", True)),
+        "tailor_threshold": int((cfg or {}).get("tailor_threshold", 40)),
+        "save_fetched": bool((cfg or {}).get("save_fetched", True)),
+        "cover_letter": (cfg or {}).get("cover_letter", {}),
+        "resume_builder": (cfg or {}).get("resume_builder", {}),
     }
 
 

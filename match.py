@@ -668,6 +668,14 @@ def main() -> None:
             auto_tailor = bool(resolved_cfg.get("auto_tailor_resume", False))
             tailor_threshold = int(resolved_cfg.get("tailor_threshold", 40))
             enforced_tailor_threshold = max(tailor_threshold, 40)
+            
+            print(f"[config] auto_tailor_resume: {auto_tailor}")
+            print(f"[config] tailor_threshold: {tailor_threshold}")
+            
+            if not auto_tailor:
+                print("[config] ⚠️  WARNING: auto_tailor_resume is FALSE in config!")
+                print("[config] Resumes and cover letters will NOT be generated!")
+                print("[config] Set 'auto_tailor_resume': true in your config.json")
             tailored_resumes_dir = out_file.parent / "tailored_resumes"
             if auto_tailor:
                 tailored_resumes_dir.mkdir(parents=True, exist_ok=True)

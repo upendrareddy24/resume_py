@@ -147,8 +147,10 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                                         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elem)
                                         time.sleep(0.5)
                                         elem.click()
-                                        time.sleep(2)
-                                        print(f"[selenium] clicked '{pattern}' button/link")
+                                        # Wait longer after clicking for content to load
+                                        wait_after_click = max(sleep_seconds, 3)  # At least 3 seconds
+                                        time.sleep(wait_after_click)
+                                        print(f"[selenium] clicked '{pattern}' button/link (waited {wait_after_click}s)")
                                         break
                                 except Exception:
                                     continue
@@ -160,6 +162,34 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                             
                 except Exception as e:
                     print(f"[selenium] open roles/search button click failed: {e}")
+            
+            # Scroll down to load more jobs (many sites lazy-load)
+            try:
+                last_height = driver.execute_script("return document.body.scrollHeight")
+                scroll_attempts = 0
+                max_scrolls = 3  # Scroll down 3 times to load more jobs
+                
+                while scroll_attempts < max_scrolls:
+                    # Scroll to bottom
+                    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(1)  # Wait for content to load
+                    
+                    # Calculate new height and compare
+                    new_height = driver.execute_script("return document.body.scrollHeight")
+                    if new_height == last_height:
+                        # No more content loaded
+                        break
+                    last_height = new_height
+                    scroll_attempts += 1
+                
+                # Scroll back to top
+                driver.execute_script("window.scrollTo(0, 0);")
+                time.sleep(0.5)
+                
+                if scroll_attempts > 0:
+                    print(f"[selenium] scrolled {scroll_attempts} times to load more jobs")
+            except Exception as scroll_err:
+                print(f"[selenium] scroll error: {scroll_err}")
             
             items = []
             if list_sel:

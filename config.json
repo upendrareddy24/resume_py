@@ -55,7 +55,7 @@
         "absolute_base": "https://www.uber.com",
         "open_roles_text": ["find open roles"],
         "search_patterns": [],
-        "sleep_seconds": 1,
+        "sleep_seconds": 3,
         "wait_selector": "div[data-testid='job-card'], li[class*='job']"
       },
       {
@@ -70,7 +70,7 @@
         "domain_filter": "apple.com",
         "absolute_base": "https://jobs.apple.com",
         "wait_selector": "tr[id*='job-']",
-        "sleep_seconds": 2
+        "sleep_seconds": 3
       },
       {
         "url": "https://www.metacareers.com/jobs",
@@ -83,7 +83,7 @@
         "careers_url": "https://www.metacareers.com/",
         "domain_filter": "metacareers.com",
         "absolute_base": "https://www.metacareers.com",
-        "sleep_seconds": 1,
+        "sleep_seconds": 3,
         "wait_selector": "a[href*='/jobs/']"
       },
       {
