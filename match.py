@@ -1354,10 +1354,16 @@ def main() -> None:
                             print(f"  [jobgen] ✅ Resume saved: {resume_path.name}")
                             
                             # Generate PDF and DOCX versions using helper
+                            # Read from saved file to ensure exact match
                             try:
                                 from resume_upload_helper import create_and_save_resume_files
+                                
+                                # Read exact content from saved file to ensure PDF matches text file exactly
+                                with open(resume_path, "r", encoding="utf-8") as f:
+                                    exact_resume_content = f.read()
+                                
                                 file_paths = create_and_save_resume_files(
-                                    resume_text=result["resume"],
+                                    resume_text=exact_resume_content,  # Use exact file content
                                     output_dir=str(tailored_resumes_dir),
                                     job_title=role,
                                     company_name=company,
@@ -1461,12 +1467,17 @@ def main() -> None:
                             assets["resume"] = str(resume_path)
                             print(f"  [llm] ✅ Resume saved: {resume_path.name}")
                             
-                            # Generate PDF version
+                            # Generate PDF version - read from saved text file to ensure exact match
                             try:
                                 from pdf_generator import generate_resume_pdf
                                 pdf_path = tailored_resumes_dir / f"resume_{base}.pdf"
+                                
+                                # Read the exact text file content to ensure PDF matches
+                                with open(resume_path, "r", encoding="utf-8") as f:
+                                    exact_resume_text = f.read()
+                                
                                 success = generate_resume_pdf(
-                                    content=resume_text_llm,
+                                    content=exact_resume_text,  # Use exact file content
                                     output_path=str(pdf_path),
                                     job_title=role,
                                     company_name=company,
@@ -1477,6 +1488,8 @@ def main() -> None:
                                     print(f"  [llm] ✅ Resume PDF saved: {pdf_path.name}")
                             except Exception as pdf_err:
                                 print(f"  [llm] ⚠️  PDF generation failed: {pdf_err}")
+                                import traceback
+                                print(f"  [llm] Traceback: {traceback.format_exc()[:300]}")
                         
                         if cover_letter_llm:
                             txt_path = letters_dir / f"cover_{base}.txt"

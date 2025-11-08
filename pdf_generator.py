@@ -148,19 +148,51 @@ r45        Generate a professional 3-page resume PDF
             # Debug: print what sections were found
             print(f"  [pdf-debug] Found sections: {list(sections.keys())}")
             
-            # Header with name (extract from first line if not provided)
+            # If parsing failed or content seems corrupted, use raw rendering mode
+            use_raw_mode = False
+            if not sections or len(sections) < 2:
+                print(f"  [pdf-debug] ⚠️ Few sections found, checking if raw mode needed...")
+                # Check if content looks like it's already well-formatted
+                if 'PROFESSIONAL SUMMARY' in content or 'WORK EXPERIENCE' in content:
+                    use_raw_mode = True
+                    print(f"  [pdf-debug] Using raw rendering mode to preserve exact content")
+            
+            # Extract name from content (look for bold name or first line)
             name_to_display = candidate_name
             if not name_to_display and content:
-                first_line = content.split('\n')[0].strip()
-                if first_line and len(first_line) < 50 and not any(kw in first_line.lower() for kw in ['target', 'position', 'github', '@']):
-                    name_to_display = first_line
+                lines = content.split('\n')
+                # Look for name in first few lines (might be bold with **)
+                for line in lines[:5]:
+                    line_stripped = line.strip()
+                    # Check if it's a name (not too long, doesn't contain email/github markers)
+                    if line_stripped and len(line_stripped) < 50:
+                        # Remove markdown bold markers
+                        name_candidate = line_stripped.replace('**', '').strip()
+                        if name_candidate and not any(kw in name_candidate.lower() for kw in ['target', 'position', 'github', '@', 'linkedin', 'http', 'www']):
+                            # Check if it looks like a name (has capital letters, not all caps)
+                            if name_candidate[0].isupper() and not name_candidate.isupper():
+                                name_to_display = name_candidate
+                                break
             
             if name_to_display:
                 story.append(Paragraph(name_to_display, self.styles['CustomHeader']))
             
-            # Contact information
-            if 'contact' in sections:
-                # Format contact info as a single line if possible
+            # Contact information - extract from content directly
+            contact_lines = []
+            lines = content.split('\n')
+            for line in lines[:10]:  # Check first 10 lines
+                line_stripped = line.strip()
+                # Look for contact info (email, phone, github, linkedin)
+                if '@' in line_stripped or 'github.com' in line_stripped.lower() or 'linkedin.com' in line_stripped.lower() or any(char.isdigit() for char in line_stripped if len(line_stripped) > 7):
+                    # Remove markdown links but keep text
+                    contact_line = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', line_stripped)
+                    contact_lines.append(contact_line)
+            
+            if contact_lines:
+                contact_text = ' | '.join(contact_lines)
+                story.append(Paragraph(contact_text, self.styles['ContactInfo']))
+            elif 'contact' in sections:
+                # Fallback to parsed contact
                 contact_text = sections['contact'].replace('\n', ' | ')
                 story.append(Paragraph(contact_text, self.styles['ContactInfo']))
             
@@ -190,11 +222,14 @@ r45        Generate a professional 3-page resume PDF
                         if line.isupper() and len(line) < 50:
                             continue
                         
-                        # Clean up the line
+                        # Preserve exact text - only remove leading bullet char if present
                         clean_line = line.lstrip('•-*►▪→◆ ').strip()
                         
-                        if clean_line and len(clean_line) > 20:  # Meaningful content
-                            story.append(Paragraph(f"• {clean_line}", self.styles['BulletPoint']))
+                        # Preserve all content exactly - don't filter by length
+                        if clean_line:
+                            # Escape XML/HTML special chars for ReportLab but preserve text exactly
+                            clean_escaped = clean_line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                            story.append(Paragraph(f"• {clean_escaped}", self.styles['BulletPoint']))
                             bullet_count += 1
                             if bullet_count >= 10:
                                 break
@@ -227,26 +262,40 @@ r45        Generate a professional 3-page resume PDF
                     
                     if experiences:
                         for exp in experiences[:5]:  # Show all 5 companies
-                            # Role and Company
-                            position = exp.get('position', 'Position')
-                            company = exp.get('company', 'Company')
-                            story.append(Paragraph(
-                                f"<b>{position}</b> | {company}",
-                                self.styles['CompanyPosition']
-                            ))
+                            # Role and Company - preserve exact format from text
+                            position = exp.get('position', '').strip()
+                            company = exp.get('company', '').strip()
                             
-                            # Date and location (format: "May 2025 – Present | Remote")
+                            # Reconstruct the exact line format: "Position | Company"
+                            if position and company:
+                                exp_header = f"<b>{position}</b> | {company}"
+                            elif position:
+                                exp_header = f"<b>{position}</b>"
+                            elif company:
+                                exp_header = company
+                            else:
+                                continue  # Skip if no position or company
+                            
+                            story.append(Paragraph(exp_header, self.styles['CompanyPosition']))
+                            
+                            # Date and location - preserve exact format
                             date_loc = []
                             if exp.get('dates'):
-                                date_loc.append(exp['dates'])
+                                date_loc.append(exp['dates'].strip())
                             if exp.get('location'):
-                                date_loc.append(exp['location'])
+                                date_loc.append(exp['location'].strip())
                             if date_loc:
                                 story.append(Paragraph(' | '.join(date_loc), self.styles['DateLocation']))
                             
-                            # Key achievements/responsibilities
-                            for bullet in exp.get('bullets', [])[:6]:  # Max 6 bullets per job
-                                story.append(Paragraph(f"• {bullet}", self.styles['BulletPoint']))
+                            # Key achievements/responsibilities - preserve exact text
+                            for bullet in exp.get('bullets', []):  # Show all bullets, no limit
+                                # Preserve the exact bullet text without modification
+                                bullet_text = bullet.strip()
+                                if bullet_text:
+                                    # Escape XML/HTML special chars for ReportLab but preserve text exactly
+                                    # ReportLab Paragraph uses XML-like syntax, so we need to escape &, <, >
+                                    bullet_escaped = bullet_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                                    story.append(Paragraph(f"• {bullet_escaped}", self.styles['BulletPoint']))
                             
                             story.append(Spacer(1, 0.1*inch))
                         experience_added = True
@@ -592,19 +641,29 @@ r45        Generate a professional 3-page resume PDF
         return bullets
     
     def _parse_experiences(self, text: str) -> list:
-        """Parse work experience section into structured data"""
+        """Parse work experience section into structured data - preserves exact text"""
         experiences = []
         current_exp = None
         
         lines = text.split('\n')
         
         for line in lines:
-            line = line.strip()
-            if not line:
+            line_stripped = line.strip()
+            if not line_stripped:
                 continue
             
-            # Check if this looks like a company/position line
-            if '|' in line or (any(keyword in line.lower() for keyword in ['engineer', 'developer', 'manager', 'analyst', 'lead', 'architect', 'scientist', 'consultant', 'owner', 'master', 'scrum'])):
+            # Check if this looks like a company/position line (has | separator or bold markers)
+            is_position_line = False
+            if '|' in line_stripped:
+                is_position_line = True
+            elif line_stripped.startswith('**') and line_stripped.endswith('**'):
+                # Markdown bold - likely a position/company header
+                is_position_line = True
+            elif any(keyword in line_stripped.lower() for keyword in ['engineer', 'developer', 'manager', 'analyst', 'lead', 'architect', 'scientist', 'consultant', 'owner', 'master', 'scrum']) and len(line_stripped) < 100:
+                # Short line with job keywords - likely position header
+                is_position_line = True
+            
+            if is_position_line:
                 # Save previous experience (even if no bullets, as long as we have position/company)
                 if current_exp and (current_exp.get('position') or current_exp.get('company')):
                     experiences.append(current_exp)
@@ -612,38 +671,46 @@ r45        Generate a professional 3-page resume PDF
                 # Start new experience
                 current_exp = {'bullets': []}
                 
-                # Parse company and position
-                if '|' in line:
-                    parts = [p.strip() for p in line.split('|')]
+                # Parse company and position - preserve exact text
+                if '|' in line_stripped:
+                    parts = [p.strip() for p in line_stripped.split('|')]
                     # Company is always the LAST part, position is everything before it
                     if len(parts) >= 2:
-                        current_exp['position'] = ' | '.join(parts[:-1])  # All parts except last
-                        current_exp['company'] = parts[-1]  # Last part is company
+                        # Remove markdown bold markers but preserve text
+                        position_parts = [p.replace('**', '').strip() for p in parts[:-1]]
+                        company_part = parts[-1].replace('**', '').strip()
+                        current_exp['position'] = ' | '.join(position_parts)  # All parts except last
+                        current_exp['company'] = company_part  # Last part is company
                     elif len(parts) == 1:
-                        current_exp['position'] = parts[0]
+                        current_exp['position'] = parts[0].replace('**', '').strip()
                 else:
-                    current_exp['position'] = line
+                    # Remove markdown bold markers
+                    current_exp['position'] = line_stripped.replace('**', '').strip()
             
             # Check if this looks like a date/location line
-            elif current_exp and (any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '20']) or 'Present' in line or '–' in line or '-' in line):
-                if '|' in line:
-                    parts = line.split('|')
+            elif current_exp and (any(month in line_stripped for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '20']) or 'Present' in line_stripped or '–' in line_stripped or ('-' in line_stripped and any(month in line_stripped for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']))):
+                # Preserve exact date/location format
+                if '|' in line_stripped:
+                    parts = [p.strip() for p in line_stripped.split('|')]
                     current_exp['dates'] = parts[0].strip()
                     if len(parts) > 1:
                         current_exp['location'] = parts[1].strip()
                 else:
                     # Check if it's a date range (contains – or -)
-                    if '–' in line or ('-' in line and any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])):
-                        current_exp['dates'] = line
-                    elif any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']):
-                        current_exp['dates'] = line
+                    if '–' in line_stripped or ('-' in line_stripped and any(month in line_stripped for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])):
+                        current_exp['dates'] = line_stripped
+                    elif any(month in line_stripped for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']):
+                        current_exp['dates'] = line_stripped
                     else:
-                        current_exp['location'] = line
+                        current_exp['location'] = line_stripped
             
-            # Otherwise, it's probably a bullet point
+            # Otherwise, it's probably a bullet point - preserve EXACT text
             elif current_exp:
-                bullet = line.lstrip('•-*►▪→◆ ')
-                if bullet and len(bullet) > 15:  # Meaningful content
+                # Preserve the exact bullet text - only remove leading bullet char if present
+                bullet = line_stripped.lstrip('•-*►▪→◆ ').strip()
+                # Preserve all content exactly - don't filter by length
+                if bullet:
+                    # Don't modify the text - preserve "AI", "I", etc. exactly as written
                     current_exp['bullets'].append(bullet)
         
         # Save last experience (even if no bullets, as long as we have position/company)

@@ -75,13 +75,25 @@ def create_and_save_resume_files(
             else:
                 print(f"  [resume] ⚠️  DOCX generation failed")
         
-        # Generate PDF (for compatibility)
+        # Generate PDF (for compatibility) - read from saved text file to ensure exact match
         if 'pdf' in formats:
             pdf_filename = f"{base_filename}.pdf"
             pdf_path = os.path.join(output_dir, pdf_filename)
             
+            # Read the exact text file content to ensure PDF matches exactly
+            txt_filename = f"{base_filename}.txt"
+            txt_path = os.path.join(output_dir, txt_filename)
+            exact_resume_text = resume_text
+            if os.path.exists(txt_path):
+                try:
+                    with open(txt_path, "r", encoding="utf-8") as f:
+                        exact_resume_text = f.read()
+                    print(f"  [resume] Reading exact content from {txt_filename} for PDF generation")
+                except Exception as e:
+                    print(f"  [resume] ⚠️  Could not read text file, using provided text: {e}")
+            
             success = generate_resume_pdf(
-                content=resume_text,
+                content=exact_resume_text,  # Use exact file content
                 output_path=pdf_path,
                 job_title=job_title,
                 company_name=company_name,
