@@ -64,7 +64,8 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                     "domain_filter": "",
                     "require_path_contains": "",
                     "absolute_base": absolute_base,
-                    "open_roles_text": ["open roles", "view all jobs", "see all openings", "current openings", "job openings"]
+                    "open_roles_text": ["open roles", "view all jobs", "see all openings", "current openings", "job openings", "find open roles"],
+                    "search_patterns": ["search for open roles", "search roles", "search jobs", "find jobs", "job search", "search openings", "start job search"]
                 })
             except Exception:
                 continue
@@ -114,24 +115,51 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
             
             # Try to find "open roles" or similar text and click it
             open_roles_patterns = site.get("open_roles_text") or []
-            if open_roles_patterns:
+            search_patterns = site.get("search_patterns") or []
+            all_patterns = open_roles_patterns + search_patterns
+            
+            if all_patterns:
                 try:
                     page_text = driver.find_element(By.TAG_NAME, "body").text.lower()
-                    for pattern in open_roles_patterns:
+                    
+                    # First try to find and click search-related buttons
+                    for pattern in all_patterns:
                         if pattern.lower() in page_text:
-                            # Try to find and click elements with this text
-                            clickable = driver.find_elements(By.XPATH, f"//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pattern.lower()}')]")
-                            if clickable:
+                            # Try multiple ways to find clickable elements
+                            clickable_selectors = [
+                                # XPath for text content
+                                (By.XPATH, f"//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pattern.lower()}')]"),
+                                # Common button/link classes and IDs for search
+                                (By.CSS_SELECTOR, "button[class*='search'], a[class*='search']"),
+                                (By.CSS_SELECTOR, "button[id*='search'], a[id*='search']"),
+                                (By.CSS_SELECTOR, "a[href*='search'], a[href*='jobs']"),
+                                # Generic buttons/links near search text
+                                (By.XPATH, f"//button[contains(., '{pattern}')]"),
+                                (By.XPATH, f"//a[contains(., '{pattern}')]"),
+                            ]
+                            
+                            for by, selector in clickable_selectors:
                                 try:
-                                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", clickable[0])
-                                    clickable[0].click()
-                                    time.sleep(2)
-                                    print(f"[selenium] clicked '{pattern}' button")
-                                    break
+                                    elements = driver.find_elements(by, selector)
+                                    if elements:
+                                        # Try to click the first matching element
+                                        elem = elements[0]
+                                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elem)
+                                        time.sleep(0.5)
+                                        elem.click()
+                                        time.sleep(2)
+                                        print(f"[selenium] clicked '{pattern}' button/link")
+                                        break
                                 except Exception:
                                     continue
+                            else:
+                                # Continue to next pattern if click failed
+                                continue
+                            # Break out of pattern loop if we successfully clicked
+                            break
+                            
                 except Exception as e:
-                    print(f"[selenium] open roles search failed: {e}")
+                    print(f"[selenium] open roles/search button click failed: {e}")
             
             items = []
             if list_sel:

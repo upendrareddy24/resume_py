@@ -24,8 +24,65 @@
   "serpapi_key": "",
   "selenium_options": {
     "enabled": true,
-    "sites": []
-
+    "sites": [
+      {
+        "url": "https://www.uber.com/us/en/careers/list/",
+        "company": "uber",
+        "list_selector": "div[data-testid='job-card'], a[href*='/careers/']",
+        "title_selector": "h3, .job-title",
+        "location_selector": ".location, [data-testid='location']",
+        "link_selector": "a",
+        "source": "selenium:uber",
+        "careers_url": "https://www.uber.com/us/en/careers/",
+        "domain_filter": "uber.com",
+        "absolute_base": "https://www.uber.com",
+        "open_roles_text": ["find open roles", "start job search"],
+        "search_patterns": ["search roles", "search jobs"],
+        "sleep_seconds": 3
+      },
+      {
+        "url": "https://jobs.apple.com/en-us/search?location=united-states-USA",
+        "company": "apple",
+        "list_selector": "div[id*='job-'], tr[id*='job-']",
+        "title_selector": "a[id*='job-title'], .table--advanced-search__title",
+        "location_selector": ".table--advanced-search__location",
+        "link_selector": "a[href*='/details/']",
+        "source": "selenium:apple",
+        "careers_url": "https://jobs.apple.com/",
+        "domain_filter": "apple.com",
+        "absolute_base": "https://jobs.apple.com",
+        "wait_selector": "div[id*='job-']",
+        "sleep_seconds": 4
+      },
+      {
+        "url": "https://www.metacareers.com/jobs",
+        "company": "meta",
+        "list_selector": "a[href*='/jobs/']",
+        "title_selector": "div[class*='title'], span[class*='title']",
+        "location_selector": "div[class*='location'], span[class*='location']",
+        "link_selector": "a",
+        "source": "selenium:meta",
+        "careers_url": "https://www.metacareers.com/",
+        "domain_filter": "metacareers.com",
+        "absolute_base": "https://www.metacareers.com",
+        "sleep_seconds": 3
+      },
+      {
+        "url": "https://openai.com/careers/search/",
+        "company": "openai",
+        "list_selector": "div[class*='job'], a[href*='/careers/']",
+        "title_selector": "h3, .job-title, [class*='title']",
+        "location_selector": ".location, [class*='location']",
+        "link_selector": "a",
+        "source": "selenium:openai",
+        "careers_url": "https://openai.com/careers/",
+        "domain_filter": "openai.com",
+        "absolute_base": "https://openai.com",
+        "open_roles_text": ["view all jobs", "see all roles", "explore roles"],
+        "search_patterns": ["search roles", "find jobs"],
+        "sleep_seconds": 3
+      }
+    ]
   },
   "output": {
     "dir": "output",

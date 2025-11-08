@@ -757,15 +757,61 @@ def main() -> None:
                     assets["role"] = role
 
                 if (not jd_text or len(jd_text) < 200) and job_url:
+                    print(f"  [fetch] Job description too short, trying direct fetch from URL...")
                     fallback_desc = fetch_job_description_plain(job_url)
                     if fallback_desc:
                         jd_text = fallback_desc
                         j["description"] = jd_text
+                        print(f"  [fetch] Fetched {len(jd_text)} chars from URL")
+                
+                # If still no description and we have URL, use LLM extractor to fetch and parse
+                if (not jd_text or len(jd_text) < 100) and job_url and use_job_desc_extractor:
+                    try:
+                        print(f"  [extractor] Fetching page and extracting with LLM...")
+                        import requests
+                        headers = {
+                            "User-Agent": (
+                                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+                            )
+                        }
+                        resp = requests.get(job_url, timeout=30, headers=headers)
+                        resp.raise_for_status()
+                        extracted = job_desc_extractor.extract_job_description(resp.text, company, role)
+                        if extracted and extracted.get("description"):
+                            # Build a comprehensive description from all extracted parts
+                            desc_parts = []
+                            if extracted.get("description"):
+                                desc_parts.append(extracted["description"])
+                            if extracted.get("responsibilities"):
+                                desc_parts.append("\n\nResponsibilities:\n" + extracted["responsibilities"])
+                            if extracted.get("minimum_qualifications"):
+                                desc_parts.append("\n\nMinimum Qualifications:\n" + extracted["minimum_qualifications"])
+                            if extracted.get("preferred_qualifications"):
+                                desc_parts.append("\n\nPreferred Qualifications:\n" + extracted["preferred_qualifications"])
+                            
+                            jd_text = "\n".join(desc_parts)
+                            j["description"] = jd_text
+                            print(f"  [extractor] Extracted comprehensive JD: {len(jd_text)} chars")
+                    except Exception as e:
+                        print(f"  [extractor] Failed to fetch/extract from URL: {e}")
 
                 # Debug: log job details
                 print(f"[cover] {idx+1}/100: {company} - {role} | Score: {score} | JD length: {len(jd_text)} chars")
-                if len(jd_text) < 50:
+                
+                # If we STILL don't have a description, create a minimal one from title/company
+                if not jd_text or len(jd_text) < 50:
                     print(f"  WARNING: Job description too short or empty for {company}")
+                    print(f"  DEBUG: auto_tailor={auto_tailor}, use_job_app_gen={use_job_app_gen}")
+                    print(f"  DEBUG: Job URL: {job_url}")
+                    
+                    # Generate a minimal description to enable LLM generation
+                    if not jd_text:
+                        jd_text = f"Position: {role} at {company}. Location: {j.get('location', 'Not specified')}."
+                        if job_url:
+                            jd_text += f" Application URL: {job_url}"
+                        print(f"  [fallback] Created minimal JD from metadata: {len(jd_text)} chars")
+                        j["description"] = jd_text
                 
                 # Use LLM-based extractor (no embeddings) if RAG parser failed or unavailable
                 parsed_info = dict(html_parsed_info)
@@ -890,6 +936,7 @@ def main() -> None:
                 
                 # Method 1: JobApplicationGenerator (unified, preferred)
                 jobgen_success = False
+                print(f"  [debug] Checking jobgen: use_job_app_gen={use_job_app_gen}, auto_tailor={auto_tailor}, jd_len={len(jd_text)}")
                 if use_job_app_gen and auto_tailor and jd_text:
                     try:
                         print(f"  [jobgen] Generating application package for {company}...")

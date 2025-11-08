@@ -98,7 +98,7 @@ class LLMParser:
             raise ValueError("Vectorstore not initialized. Call set_job_description() first.")
         
         retriever = self.vectorstore.as_retriever()
-        retrieved_docs = retriever.get_relevant_documents(query)[:top_k]
+        retrieved_docs = retriever.invoke(query)[:top_k]
         context = "\n\n".join(doc.page_content for doc in retrieved_docs)
         return context
 
