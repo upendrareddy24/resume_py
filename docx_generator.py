@@ -10,6 +10,7 @@ from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.enum.style import WD_STYLE_TYPE
 from datetime import datetime
+import re
 
 
 class WordDocumentGenerator:
@@ -27,7 +28,7 @@ class WordDocumentGenerator:
         candidate_name: str = ""
     ) -> bool:
         """
-        Generate a professional 2-page resume in DOCX format
+        Generate a professional 3-page resume in DOCX format
         
         Args:
             content: Resume text content
@@ -143,9 +144,14 @@ class WordDocumentGenerator:
                     exp_text = sections_dict[key]
                     experiences = self._parse_experiences(exp_text)
                     
+                    # Debug: Print parsed experiences
+                    print(f"  [docx-debug] Parsed {len(experiences)} experiences")
+                    for i, exp in enumerate(experiences[:5]):
+                        print(f"  [docx-debug] Exp {i+1}: position='{exp.get('position', 'N/A')}', company='{exp.get('company', 'N/A')}', dates='{exp.get('dates', 'N/A')}', location='{exp.get('location', 'N/A')}'")
+                    
                     if experiences:
-                        for exp in experiences[:3]:  # Top 3 most recent
-                            # Company and Position
+                        for exp in experiences[:5]:  # Show all 5 companies
+                            # Role and Company
                             position = exp.get('position', 'Position')
                             company = exp.get('company', 'Company')
                             
@@ -156,7 +162,7 @@ class WordDocumentGenerator:
                             job_para.paragraph_format.space_before = Pt(6)
                             job_para.paragraph_format.space_after = Pt(3)
                             
-                            # Date and Location
+                            # Date and Location (format: "May 2025 – Present | Remote")
                             if exp.get('dates') or exp.get('location'):
                                 date_loc = []
                                 if exp.get('dates'):
@@ -348,7 +354,7 @@ class WordDocumentGenerator:
         section_keywords = {
             'contact': ['contact', 'email:', 'phone:', 'github:', 'linkedin:'],
             'summary': ['summary', 'objective', 'profile', 'professional summary'],
-            'experience': ['experience', 'employment', 'work history', 'work experience'],
+            'experience': ['experience', 'employment', 'work history', 'work experience', 'professional experience'],
             'education': ['education', 'academic'],
             'skills': ['skills', 'competencies', 'technical skills'],
             'functional_expertise': ['functional expertise', 'functional skills', 'domain expertise'],
@@ -358,11 +364,24 @@ class WordDocumentGenerator:
             'certifications': ['certifications', 'licenses', 'certificates']
         }
         
+        # Patterns to skip (optimization text, meta descriptions, etc.)
+        skip_patterns = [
+            r'specifically optimized for',
+            r'highlighting.*relevant skills',
+            r'this resume is.*optimized',
+            r'tailored.*for.*position',
+            r'optimized for.*position at',
+        ]
+        
         for line in lines:
             line_stripped = line.strip()
             line_lower = line_stripped.lower()
             
             if not current_section and not line_stripped:
+                continue
+            
+            # Skip lines matching optimization text patterns
+            if any(re.search(pattern, line_lower) for pattern in skip_patterns):
                 continue
             
             # Check for section headers
@@ -418,29 +437,39 @@ class WordDocumentGenerator:
                 continue
             
             # Company/position line
-            if '|' in line or any(keyword in line.lower() for keyword in ['engineer', 'developer', 'manager', 'analyst', 'lead', 'architect', 'scientist', 'consultant']):
-                if current_exp and current_exp.get('bullets'):
+            if '|' in line or any(keyword in line.lower() for keyword in ['engineer', 'developer', 'manager', 'analyst', 'lead', 'architect', 'scientist', 'consultant', 'owner', 'master', 'scrum']):
+                # Save previous experience (even if no bullets, as long as we have position/company)
+                if current_exp and (current_exp.get('position') or current_exp.get('company')):
                     experiences.append(current_exp)
                 
                 current_exp = {'bullets': []}
                 
                 if '|' in line:
-                    parts = line.split('|')
-                    current_exp['position'] = parts[0].strip()
-                    if len(parts) > 1:
-                        current_exp['company'] = parts[1].strip()
+                    parts = [p.strip() for p in line.split('|')]
+                    # Company is always the LAST part, position is everything before it
+                    if len(parts) >= 2:
+                        current_exp['position'] = ' | '.join(parts[:-1])  # All parts except last
+                        current_exp['company'] = parts[-1]  # Last part is company
+                    elif len(parts) == 1:
+                        current_exp['position'] = parts[0]
                 else:
                     current_exp['position'] = line
             
             # Date/location line
-            elif current_exp and any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '20', 'Present']):
+            elif current_exp and (any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '20', 'Present']) or '–' in line or '-' in line):
                 if '|' in line:
                     parts = line.split('|')
                     current_exp['dates'] = parts[0].strip()
                     if len(parts) > 1:
                         current_exp['location'] = parts[1].strip()
                 else:
-                    current_exp['dates'] = line
+                    # Check if it's a date range (contains – or -)
+                    if '–' in line or ('-' in line and any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])):
+                        current_exp['dates'] = line
+                    elif any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']):
+                        current_exp['dates'] = line
+                    else:
+                        current_exp['location'] = line
             
             # Bullet point
             elif current_exp:
@@ -448,7 +477,8 @@ class WordDocumentGenerator:
                 if bullet and len(bullet) > 15:
                     current_exp['bullets'].append(bullet)
         
-        if current_exp and current_exp.get('bullets'):
+        # Save last experience (even if no bullets, as long as we have position/company)
+        if current_exp and (current_exp.get('position') or current_exp.get('company')):
             experiences.append(current_exp)
         
         return experiences

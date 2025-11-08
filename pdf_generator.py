@@ -113,7 +113,7 @@ class PDFGenerator:
         candidate_name: str = ""
     ) -> bool:
         """
-        Generate a professional 2-page resume PDF
+r45        Generate a professional 3-page resume PDF
         
         Args:
             content: Resume text content
@@ -129,7 +129,7 @@ class PDFGenerator:
             # Ensure output directory exists
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             
-            # Create PDF document
+            # Create PDF document (3 pages allowed)
             doc = SimpleDocTemplate(
                 output_path,
                 pagesize=letter,
@@ -220,9 +220,14 @@ class PDFGenerator:
                     # Try to parse structured experiences
                     experiences = self._parse_experiences(exp_text)
                     
+                    # Debug: Print parsed experiences
+                    print(f"  [pdf-debug] Parsed {len(experiences)} experiences")
+                    for i, exp in enumerate(experiences[:5]):
+                        print(f"  [pdf-debug] Exp {i+1}: position='{exp.get('position', 'N/A')}', company='{exp.get('company', 'N/A')}', dates='{exp.get('dates', 'N/A')}', location='{exp.get('location', 'N/A')}'")
+                    
                     if experiences:
-                        for exp in experiences[:3]:  # Show top 3 most recent/relevant
-                            # Company and position
+                        for exp in experiences[:5]:  # Show all 5 companies
+                            # Role and Company
                             position = exp.get('position', 'Position')
                             company = exp.get('company', 'Company')
                             story.append(Paragraph(
@@ -230,7 +235,7 @@ class PDFGenerator:
                                 self.styles['CompanyPosition']
                             ))
                             
-                            # Date and location
+                            # Date and location (format: "May 2025 – Present | Remote")
                             date_loc = []
                             if exp.get('dates'):
                                 date_loc.append(exp['dates'])
@@ -480,7 +485,7 @@ class PDFGenerator:
         section_keywords = {
             'contact': ['contact', 'email:', 'phone:', 'github:', 'linkedin:'],
             'summary': ['summary', 'objective', 'profile', 'professional summary'],
-            'experience': ['experience', 'employment', 'work history', 'work experience'],
+            'experience': ['experience', 'employment', 'work history', 'work experience', 'professional experience'],
             'education': ['education', 'academic'],
             'skills': ['skills', 'competencies', 'technical skills'],
             'functional_expertise': ['functional expertise', 'functional skills', 'domain expertise'],
@@ -490,12 +495,25 @@ class PDFGenerator:
             'certifications': ['certifications', 'licenses', 'certificates']
         }
         
+        # Patterns to skip (optimization text, meta descriptions, etc.)
+        skip_patterns = [
+            r'specifically optimized for',
+            r'highlighting.*relevant skills',
+            r'this resume is.*optimized',
+            r'tailored.*for.*position',
+            r'optimized for.*position at',
+        ]
+        
         for line in lines:
             line_stripped = line.strip()
             line_lower = line_stripped.lower()
             
             # Skip empty lines at the start of content
             if not current_section and not line_stripped:
+                continue
+            
+            # Skip lines matching optimization text patterns
+            if any(re.search(pattern, line_lower) for pattern in skip_patterns):
                 continue
             
             # Check if this is a section header (all caps or specific keywords)
@@ -548,8 +566,12 @@ class PDFGenerator:
                     sections['contact'] = line.strip()
                     break
             
-            # Rest goes to summary
-            sections['summary'] = content
+            # Rest goes to summary (but filter out optimization text)
+            filtered_content = '\n'.join([
+                line for line in lines 
+                if not any(re.search(pattern, line.lower()) for pattern in skip_patterns)
+            ])
+            sections['summary'] = filtered_content
         
         return sections
     
@@ -582,9 +604,9 @@ class PDFGenerator:
                 continue
             
             # Check if this looks like a company/position line
-            if '|' in line or (any(keyword in line.lower() for keyword in ['engineer', 'developer', 'manager', 'analyst', 'lead', 'architect'])):
-                # Save previous experience
-                if current_exp and current_exp.get('bullets'):
+            if '|' in line or (any(keyword in line.lower() for keyword in ['engineer', 'developer', 'manager', 'analyst', 'lead', 'architect', 'scientist', 'consultant', 'owner', 'master', 'scrum'])):
+                # Save previous experience (even if no bullets, as long as we have position/company)
+                if current_exp and (current_exp.get('position') or current_exp.get('company')):
                     experiences.append(current_exp)
                 
                 # Start new experience
@@ -592,22 +614,31 @@ class PDFGenerator:
                 
                 # Parse company and position
                 if '|' in line:
-                    parts = line.split('|')
-                    current_exp['position'] = parts[0].strip()
-                    if len(parts) > 1:
-                        current_exp['company'] = parts[1].strip()
+                    parts = [p.strip() for p in line.split('|')]
+                    # Company is always the LAST part, position is everything before it
+                    if len(parts) >= 2:
+                        current_exp['position'] = ' | '.join(parts[:-1])  # All parts except last
+                        current_exp['company'] = parts[-1]  # Last part is company
+                    elif len(parts) == 1:
+                        current_exp['position'] = parts[0]
                 else:
                     current_exp['position'] = line
             
             # Check if this looks like a date/location line
-            elif current_exp and any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '20']):
+            elif current_exp and (any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '20']) or 'Present' in line or '–' in line or '-' in line):
                 if '|' in line:
                     parts = line.split('|')
                     current_exp['dates'] = parts[0].strip()
                     if len(parts) > 1:
                         current_exp['location'] = parts[1].strip()
                 else:
-                    current_exp['dates'] = line
+                    # Check if it's a date range (contains – or -)
+                    if '–' in line or ('-' in line and any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])):
+                        current_exp['dates'] = line
+                    elif any(month in line for month in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']):
+                        current_exp['dates'] = line
+                    else:
+                        current_exp['location'] = line
             
             # Otherwise, it's probably a bullet point
             elif current_exp:
@@ -615,8 +646,8 @@ class PDFGenerator:
                 if bullet and len(bullet) > 15:  # Meaningful content
                     current_exp['bullets'].append(bullet)
         
-        # Save last experience
-        if current_exp and current_exp.get('bullets'):
+        # Save last experience (even if no bullets, as long as we have position/company)
+        if current_exp and (current_exp.get('position') or current_exp.get('company')):
             experiences.append(current_exp)
         
         return experiences

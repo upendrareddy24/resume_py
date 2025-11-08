@@ -49,22 +49,32 @@ Job Description: {job_description}
    - Prioritize achievements that match job requirements over generic accomplishments
 
 3. **WORK EXPERIENCE Section:**
-   Section header: "WORK EXPERIENCE"
+   Section header: "WORK EXPERIENCE" or "PROFESSIONAL EXPERIENCE"
    
-   For EACH position, use this EXACT format:
+   **CRITICAL FORMATTING REQUIREMENTS:**
+   - You MUST include ALL positions from the candidate's background (up to 5 positions)
+   - Each position MUST follow this EXACT format with NO variations:
    ```
-   Job Title | Actual Company Name
-   Month Year – Month Year | City, State/Country
+   Position Title | Company Name
+   Month Year – Month Year | Location
    • Achievement with quantifiable result (e.g., "Reduced costs by 40% ($500K annually)")
    • Achievement with quantifiable result
    • Achievement with quantifiable result
    • Achievement with quantifiable result
    ```
    
+   **MANDATORY RULES:**
+   - ALWAYS include the company name after the position title, separated by " | "
+   - If the position title contains "|" (e.g., "Product Owner | Python Engineer"), the format becomes:
+     "Product Owner | Python Engineer | Company Name" (company is ALWAYS the LAST part)
+   - NEVER omit company names - they are REQUIRED for every position
+   - Use the EXACT company names from the candidate's background (e.g., "Rivian Automotive, LLC", "Robert Bosch, Michigan")
+   - Use the EXACT job titles from the candidate's background
+   - Dates MUST be in format "Month Year – Month Year" or "Month Year – Present"
+   - Location MUST be included (e.g., "Remote, USA", "Michigan, USA", "Bangalore, India")
+   
    **CRITICAL - JOB-SPECIFIC TAILORING:** 
-   - Use the REAL company names from the candidate's background
-   - Use the REAL job titles from the candidate's background
-   - Include 2-3 most recent positions (prioritize positions with experience matching JD requirements)
+   - Include ALL 5 positions from the candidate's work history (prioritize most recent first)
    - Each position must have 4-6 bullet points
    - **FOR EACH BULLET POINT:**
      * Prioritize achievements that use KEYWORDS from the job description
@@ -75,7 +85,7 @@ Job Description: {job_description}
      * Use similar language/phrasing from the job description (e.g., if JD says "scalable systems", 
        use "scalable systems" in your bullet points)
      * Reorder bullet points to put most relevant achievements FIRST
-   - If a position has no relevant achievements, reduce it to 2-3 bullets or skip it entirely
+   - If a position has no relevant achievements, still include it with 2-3 bullets focusing on relevant technologies/skills
 
 4. **EDUCATION Section:**
    Section header: "EDUCATION"
@@ -166,14 +176,21 @@ PROFESSIONAL SUMMARY
 
 WORK EXPERIENCE
 
-Job Title | Company Name
+Position Title | Company Name
 Month Year – Month Year | Location
 • Achievement 1 with quantifiable results
 • Achievement 2 with quantifiable results
 • Achievement 3 with quantifiable results
 • Achievement 4 with quantifiable results
 
-[Repeat for 2-3 positions]
+Position Title | Company Name
+Month Year – Month Year | Location
+• Achievement 1 with quantifiable results
+• Achievement 2 with quantifiable results
+• Achievement 3 with quantifiable results
+• Achievement 4 with quantifiable results
+
+[Repeat for ALL positions - include ALL 5 companies from candidate's background]
 
 EDUCATION
 
@@ -213,11 +230,15 @@ PUBLICATIONS
 ```
 
 **CRITICAL RULES:**
-- NO generic placeholders like "Company" or "Position"
-- USE REAL NAMES from the candidate's background
+- NO generic placeholders like "Company" or "Position" - ALWAYS use REAL names from candidate's background
+- COMPANY NAMES ARE MANDATORY - every position MUST include the company name after the position title
+- If position title contains "|", format as: "Position Part 1 | Position Part 2 | Company Name" (company is LAST)
 - EXACTLY 10 bullet points in Professional Summary
+- Include ALL 5 work positions with company names
 - EVERY achievement must include numbers/metrics
 - Focus on relevance to the target job
+- Dates format: "Month Year – Month Year" or "Month Year – Present"
+- Location format: "City, State/Country" or "Remote, Country"
 """
 
 ENHANCED_COVER_LETTER_PROMPT = """
@@ -299,7 +320,7 @@ Example format:
 """
 
 WORK_EXPERIENCE_PROMPT = """
-Generate a tailored work experience section focusing on the MOST RECENT and MOST RELEVANT positions for a {job_title} role at {company_name}.
+Generate a tailored work experience section for a {job_title} role at {company_name}.
 
 **Job Description:**
 {job_description}
@@ -307,32 +328,48 @@ Generate a tailored work experience section focusing on the MOST RECENT and MOST
 **Candidate's Work History:**
 {experience_text}
 
+**CRITICAL REQUIREMENTS:**
+1. Include ALL positions from the candidate's work history (up to 5 positions)
+2. Company names are MANDATORY - every position MUST include the company name
+3. Use EXACT format with NO variations
+
 **Instructions:**
-1. Select the 2-3 most recent and relevant positions
-2. For each position, provide:
+1. For EACH position, provide:
    - Position Title | Company Name
+     * If position title contains "|", format as: "Position Part 1 | Position Part 2 | Company Name"
+     * Company name is ALWAYS the LAST part after all "|" separators
    - Employment Period | Location
+     * Format: "Month Year – Month Year" or "Month Year – Present"
+     * Include full location: "City, State/Country" or "Remote, Country"
    - 4-6 impactful bullet points that:
      * Align with the job requirements
-     * Include quantifiable results
-     * Highlight relevant technologies and skills
+     * Include quantifiable results (%, $, numbers, scale)
+     * Highlight relevant technologies and skills from job description
      * Show increasing responsibility and impact
-     * Use strong action verbs
+     * Use strong action verbs (Led, Architected, Developed, Optimized, Implemented)
 
-3. If the candidate has older but highly relevant experience, include 1 additional position with 3-4 bullets
+2. Prioritize most recent positions first, but include ALL positions
 
-**Prioritization Criteria:**
-- Relevance to target role: 50%
-- Recency: 30%
-- Impact and achievements: 20%
+3. For each bullet point:
+   - Use keywords from the job description
+   - Match technologies mentioned in the JD
+   - Show quantifiable impact
+   - Reorder to put most relevant achievements FIRST
 
-**Format:**
+**MANDATORY FORMAT (use EXACTLY this format):**
 Position Title | Company Name
-Month Year - Month Year | Location
+Month Year – Month Year | Location
 • Achievement/responsibility with quantifiable impact
 • Achievement/responsibility with quantifiable impact
-...
+• Achievement/responsibility with quantifiable impact
+• Achievement/responsibility with quantifiable impact
 
-[Repeat for each position]
+[Repeat for ALL positions - include ALL companies from candidate's background]
+
+**CRITICAL:**
+- NEVER omit company names
+- NEVER use placeholders like "Company" or "N/A"
+- ALWAYS use real company names from the candidate's background
+- Company name is ALWAYS the last part after "|" separators
 """
 
