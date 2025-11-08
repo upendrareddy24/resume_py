@@ -1156,21 +1156,57 @@ def main() -> None:
                         print(f"  [jobgen] Generating application package for {company}...")
                         result = job_app_gen.generate_application_package(jd_text, company, role, parallel=True)
                         
-                        # Save tailored resume
+                        # Save tailored resume (TXT)
                         if result.get("resume"):
                             resume_path = tailored_resumes_dir / f"resume_{base}.txt"
                             with open(resume_path, "w", encoding="utf-8") as f:
                                 f.write(result["resume"])
                             assets["resume"] = str(resume_path)
                             print(f"  [jobgen] ✅ Resume saved: {resume_path.name}")
+                            
+                            # Generate PDF version
+                            try:
+                                from pdf_generator import generate_resume_pdf
+                                pdf_path = tailored_resumes_dir / f"resume_{base}.pdf"
+                                success = generate_resume_pdf(
+                                    content=result["resume"],
+                                    output_path=str(pdf_path),
+                                    job_title=role,
+                                    company_name=company,
+                                    candidate_name=""  # Will be extracted from resume
+                                )
+                                if success:
+                                    assets["resume_pdf"] = str(pdf_path)
+                                    print(f"  [jobgen] ✅ Resume PDF saved: {pdf_path.name}")
+                            except Exception as pdf_err:
+                                print(f"  [jobgen] ⚠️  PDF generation failed: {pdf_err}")
                         
-                        # Save cover letter
+                        # Save cover letter (TXT)
                         if result.get("cover_letter"):
                             txt_path = letters_dir / f"cover_{base}.txt"
                             with open(txt_path, "w", encoding="utf-8") as f:
                                 f.write(result["cover_letter"])
                             assets["cover_letter"] = str(txt_path)
                             print(f"  [jobgen] ✅ Cover letter saved: {txt_path.name}")
+                            
+                            # Generate PDF version
+                            try:
+                                from pdf_generator import generate_cover_letter_pdf
+                                pdf_path = letters_dir / f"cover_{base}.pdf"
+                                success = generate_cover_letter_pdf(
+                                    content=result["cover_letter"],
+                                    output_path=str(pdf_path),
+                                    job_title=role,
+                                    company_name=company,
+                                    candidate_name="",  # Will be extracted
+                                    candidate_email="",
+                                    candidate_phone=""
+                                )
+                                if success:
+                                    assets["cover_letter_pdf"] = str(pdf_path)
+                                    print(f"  [jobgen] ✅ Cover letter PDF saved: {pdf_path.name}")
+                            except Exception as pdf_err:
+                                print(f"  [jobgen] ⚠️  PDF generation failed: {pdf_err}")
                         
                         # Optionally save job summary
                         if result.get("job_summary"):
@@ -1232,6 +1268,24 @@ def main() -> None:
                             llm_resume_text = resume_text_llm
                             llm_resume_generated = True
                             assets["resume"] = str(resume_path)
+                            print(f"  [llm] ✅ Resume saved: {resume_path.name}")
+                            
+                            # Generate PDF version
+                            try:
+                                from pdf_generator import generate_resume_pdf
+                                pdf_path = tailored_resumes_dir / f"resume_{base}.pdf"
+                                success = generate_resume_pdf(
+                                    content=resume_text_llm,
+                                    output_path=str(pdf_path),
+                                    job_title=role,
+                                    company_name=company,
+                                    candidate_name=""
+                                )
+                                if success:
+                                    assets["resume_pdf"] = str(pdf_path)
+                                    print(f"  [llm] ✅ Resume PDF saved: {pdf_path.name}")
+                            except Exception as pdf_err:
+                                print(f"  [llm] ⚠️  PDF generation failed: {pdf_err}")
                         
                         if cover_letter_llm:
                             txt_path = letters_dir / f"cover_{base}.txt"
@@ -1240,6 +1294,26 @@ def main() -> None:
                             llm_cover_generated = True
                             builder_tailored = None
                             assets["cover_letter"] = str(txt_path)
+                            print(f"  [llm] ✅ Cover letter saved: {txt_path.name}")
+                            
+                            # Generate PDF version
+                            try:
+                                from pdf_generator import generate_cover_letter_pdf
+                                pdf_path = letters_dir / f"cover_{base}.pdf"
+                                success = generate_cover_letter_pdf(
+                                    content=cover_letter_llm,
+                                    output_path=str(pdf_path),
+                                    job_title=role,
+                                    company_name=company,
+                                    candidate_name="",
+                                    candidate_email="",
+                                    candidate_phone=""
+                                )
+                                if success:
+                                    assets["cover_letter_pdf"] = str(pdf_path)
+                                    print(f"  [llm] ✅ Cover letter PDF saved: {pdf_path.name}")
+                            except Exception as pdf_err:
+                                print(f"  [llm] ⚠️  PDF generation failed: {pdf_err}")
                         
                         continue  # Skip to next job
                     except Exception as e:
