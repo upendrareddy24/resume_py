@@ -64,6 +64,12 @@ try:
     LLM_PARSER_AVAILABLE = True
 except Exception:
     LLM_PARSER_AVAILABLE = False
+
+try:
+    from llm_job_description_extractor import JobDescriptionExtractor
+    JOB_DESC_EXTRACTOR_AVAILABLE = True
+except Exception:
+    JOB_DESC_EXTRACTOR_AVAILABLE = False
 try:
     from llm_job_parser import LLMParser as LLMJobHTMLParser
     LLM_JOB_HTML_PARSER_AVAILABLE = True
@@ -629,16 +635,28 @@ def main() -> None:
                 except Exception as e:
                     print(f"[llmcover] Failed to initialize LLMCoverLetterJobDescription: {e}. Falling back.")
             
-            # Initialize LLMParser for job description enrichment
+            # Initialize job description extractor (no embeddings needed)
+            use_job_desc_extractor = False
+            job_desc_extractor = None
+            if JOB_DESC_EXTRACTOR_AVAILABLE and use_openai and openai_key:
+                try:
+                    job_desc_extractor = JobDescriptionExtractor(openai_key)
+                    use_job_desc_extractor = True
+                    print("[extractor] Using LLM-based job description extractor (no embeddings)")
+                except Exception as e:
+                    print(f"[extractor] Failed to initialize: {e}. Will use basic extraction.")
+            
+            # Initialize LLMParser for job description enrichment (requires embeddings)
             use_llm_parser = False
             llm_parser = None
-            if LLM_PARSER_AVAILABLE and use_openai and openai_key:
+            skip_embedding_parser = os.getenv("SKIP_EMBEDDING_PARSER", "false").lower() == "true"
+            if LLM_PARSER_AVAILABLE and use_openai and openai_key and not skip_embedding_parser:
                 try:
                     llm_parser = LLMParser(openai_key)
                     use_llm_parser = True
                     print("[parser] Using LLMParser (RAG-based) for job description parsing")
                 except Exception as e:
-                    print(f"[parser] Failed to initialize LLMParser: {e}. Skipping enhanced parsing.")
+                    print(f"[parser] Failed to initialize LLMParser: {e}. Falling back to extractor.")
             
             # Final fallback to CoverLetterBuilder
             builder = None
@@ -749,8 +767,31 @@ def main() -> None:
                 if len(jd_text) < 50:
                     print(f"  WARNING: Job description too short or empty for {company}")
                 
-                # Use LLMParser to enrich job information if available
+                # Use LLM-based extractor (no embeddings) if RAG parser failed or unavailable
                 parsed_info = dict(html_parsed_info)
+                if use_job_desc_extractor and jd_text and not use_llm_parser:
+                    try:
+                        print(f"  [extractor] Extracting structured info for {company}...")
+                        extracted = job_desc_extractor.extract_job_description(jd_text, company, role)
+                        
+                        # Convert extracted format to parsed_info format
+                        if extracted:
+                            parsed_info["description"] = extracted.get("description", "")
+                            parsed_info["required_skills"] = extracted.get("responsibilities", "") + "\n" + extracted.get("minimum_qualifications", "")
+                            parsed_info["preferred_skills"] = extracted.get("preferred_qualifications", "")
+                            
+                            # Save extracted info
+                            if extracted.get("description"):
+                                parsed_dir = out_file.parent / "parsed_jobs"
+                                parsed_dir.mkdir(parents=True, exist_ok=True)
+                                parsed_path = parsed_dir / f"extracted_{base}.txt"
+                                with open(parsed_path, "w", encoding="utf-8") as f:
+                                    f.write(extracted.get("raw_structured", ""))
+                                print(f"  [extractor] Saved structured info for {company}")
+                    except Exception as e:
+                        print(f"  [extractor] Error extracting {company}: {e}")
+                
+                # Use LLMParser to enrich job information if available
                 if use_llm_parser and jd_text:
                     try:
                         print(f"  [parser] Parsing job description for {company}...")
@@ -782,7 +823,17 @@ def main() -> None:
                                 f.write(f"Description:\n{parsed_info.get('description', 'N/A')}\n")
                     except Exception as e:
                         print(f"  [parser] Error parsing {company}: {e}")
-                        parsed_info = dict(html_parsed_info)
+                        # Fallback to extractor if parser fails
+                        if use_job_desc_extractor and not parsed_info:
+                            try:
+                                print(f"  [extractor] Trying extractor as fallback for {company}...")
+                                extracted = job_desc_extractor.extract_job_description(jd_text, company, role)
+                                if extracted:
+                                    parsed_info["description"] = extracted.get("description", "")
+                                    parsed_info["required_skills"] = extracted.get("responsibilities", "") + "\n" + extracted.get("minimum_qualifications", "")
+                                    parsed_info["preferred_skills"] = extracted.get("preferred_qualifications", "")
+                            except Exception:
+                                pass
                 
                 job_summary_override = ""
                 job_description_override = jd_text

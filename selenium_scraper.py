@@ -63,7 +63,8 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                     "careers_url": site,
                     "domain_filter": "",
                     "require_path_contains": "",
-                    "absolute_base": absolute_base
+                    "absolute_base": absolute_base,
+                    "open_roles_text": ["open roles", "view all jobs", "see all openings", "current openings", "job openings"]
                 })
             except Exception:
                 continue
@@ -110,6 +111,28 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                     time.sleep(sleep_seconds)
             except Exception:
                 pass
+            
+            # Try to find "open roles" or similar text and click it
+            open_roles_patterns = site.get("open_roles_text") or []
+            if open_roles_patterns:
+                try:
+                    page_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+                    for pattern in open_roles_patterns:
+                        if pattern.lower() in page_text:
+                            # Try to find and click elements with this text
+                            clickable = driver.find_elements(By.XPATH, f"//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pattern.lower()}')]")
+                            if clickable:
+                                try:
+                                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", clickable[0])
+                                    clickable[0].click()
+                                    time.sleep(2)
+                                    print(f"[selenium] clicked '{pattern}' button")
+                                    break
+                                except Exception:
+                                    continue
+                except Exception as e:
+                    print(f"[selenium] open roles search failed: {e}")
+            
             items = []
             if list_sel:
                 items = driver.find_elements(By.CSS_SELECTOR, list_sel)
