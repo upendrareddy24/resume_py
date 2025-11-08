@@ -671,7 +671,19 @@ def main() -> None:
             if auto_tailor:
                 tailored_resumes_dir.mkdir(parents=True, exist_ok=True)
             
-            for idx, j in enumerate(top[:100]):
+            # Filter jobs by score threshold FIRST to avoid wasting time
+            score_threshold = float(resolved_cfg.get("min_score", 60))
+            print(f"[filter] Filtering jobs with score >= {score_threshold}")
+            
+            filtered_jobs = [j for j in top[:100] if j.get("score", 0) >= score_threshold]
+            
+            if not filtered_jobs:
+                print(f"[filter] WARNING: No jobs above score threshold {score_threshold}. Lowering to 40.")
+                filtered_jobs = [j for j in top[:100] if j.get("score", 0) >= 40]
+            
+            print(f"[filter] Processing {len(filtered_jobs)} jobs above threshold (out of {len(top[:100])} total)")
+            
+            for idx, j in enumerate(filtered_jobs):
                 score = j.get("score", 0)
                 company = (j.get("company") or "").strip() or "Company"
                 role = (j.get("title") or "").strip() or "Role"
