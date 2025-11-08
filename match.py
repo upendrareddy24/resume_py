@@ -249,6 +249,56 @@ def fetch_job_description_plain(url: str, max_chars: int = 12000) -> str:
     return cleaned[:max_chars]
 
 
+def fetch_job_description_with_playwright(url: str, max_chars: int = 12000) -> str:
+    """
+    Fetch job description using Playwright for JavaScript rendering.
+    This handles dynamic content like Meta careers pages.
+    """
+    try:
+        import asyncio
+        from playwright.async_api import async_playwright  # noqa: F401
+        
+        async def get_description():
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                await page.goto(url, timeout=60000, wait_until="networkidle")
+                
+                # Wait a bit more for any lazy-loaded content
+                await page.wait_for_timeout(2000)
+                
+                html = await page.content()
+                await browser.close()
+                return html
+        
+        # Get event loop and run async function
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        html_text = loop.run_until_complete(get_description())
+        
+        # Strip HTML tags
+        cleaned = _html_script_style_re.sub(" ", html_text)
+        cleaned = _html_strip_re.sub(" ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        
+        if not cleaned or len(cleaned) < 50:
+            return ""
+        
+        return cleaned[:max_chars]
+    
+    except ImportError:
+        # Playwright not installed, return empty
+        return ""
+    except Exception as e:
+        # On any error, return empty
+        print(f"  [playwright] Error: {type(e).__name__}: {str(e)[:100]}")
+        return ""
+
+
 # ---------- Free sources (no API key required) ----------
 
 def _query_match(text: str, query: str) -> bool:
@@ -1109,6 +1159,19 @@ def main() -> None:
                 except Exception as e:
                     print(f"  [parallel-fetch] {company_label}: Plain fetch failed: {type(e).__name__}: {e}")
                 
+                # Try Playwright for JavaScript-rendered content (e.g., Meta careers)
+                try:
+                    print(f"  [parallel-fetch] {company_label}: Trying Playwright for JS-rendered content...")
+                    pw_desc = fetch_job_description_with_playwright(job_url)
+                    if pw_desc and len(pw_desc) > 100:
+                        job["description"] = pw_desc
+                        print(f"  [parallel-fetch] {company_label}: ✅ {len(pw_desc)} chars (Playwright)")
+                        return job
+                    else:
+                        print(f"  [parallel-fetch] {company_label}: Playwright returned short/empty result ({len(pw_desc) if pw_desc else 0} chars)")
+                except Exception as e:
+                    print(f"  [parallel-fetch] {company_label}: Playwright failed: {type(e).__name__}")
+                
                 # If still no description, create minimal one from title/company
                 if not job.get("description") or len(job.get("description", "")) < 50:
                     company_phrase = f" at {company_label}" if company_label else ""
@@ -1296,16 +1359,14 @@ def main() -> None:
                 has_desc = f"✅ {len(jd_text)} chars" if jd_text else "❌ NO DESC"
                 print(f"[cover] {idx+1}/100: {company_label} - {role_label} | Score: {score:.1f} | URL: {has_url} | Desc: {has_desc}")
                 
-                # Check if visa sponsorship is available (disabled by default - set check_enabled=True to enable)
-                has_sponsorship = check_sponsorship_available(jd_text, check_enabled=False)  # 🔴 SET TO True TO ENABLE
+                # Check if visa sponsorship is available (disabled by default)
+                sponsorship_check_enabled = False  # Set to True to enable sponsorship filtering
+                has_sponsorship = check_sponsorship_available(jd_text, check_enabled=sponsorship_check_enabled)
                 if not has_sponsorship:
                     print(f"  [skip] ⏭️ ❌ SPONSORSHIP: No visa sponsorship available for this position")
                     print(f"       Company: {company_label} | Role: {role_label} | Score: {score}")
                     filter_stats["sponsorship_blocked"] += 1
                     continue
-                else:
-                    if check_enabled:
-                        print(f"  [check] ✅ SPONSORSHIP: Sponsorship available")
                 
                 # If we STILL don't have a description, create a minimal one from title/company
                 if not jd_text or len(jd_text) < 50:
@@ -1454,9 +1515,11 @@ def main() -> None:
                 if use_job_app_gen and auto_tailor and jd_text:
                     try:
                         print(f"\n  ✅ RESUME GENERATION ATTEMPT:")
-                        print(f"     - use_job_app_gen: True")
-                        print(f"     - auto_tailor: True")
+                        print(f"     - use_job_app_gen: {use_job_app_gen}")
+                        print(f"     - auto_tailor: {auto_tailor}")
                         print(f"     - jd_text length: {len(jd_text)} chars")
+                        print(f"     - company: {company}")
+                        print(f"     - role: {role}")
                         print(f"  [jobgen] Generating application package for {company}...")
                         result = job_app_gen.generate_application_package(jd_text, company, role, parallel=True)
                         
