@@ -14,6 +14,12 @@ from reportlab.lib import colors
 from datetime import datetime
 import re
 
+try:
+    from llm_experience_parser import parse_experiences_with_llm
+    LLM_PARSER_AVAILABLE = True
+except ImportError:
+    LLM_PARSER_AVAILABLE = False
+
 
 def _normalize_meta_field(value: str | None) -> str:
     """Normalize company/role/location fields, stripping placeholder text."""
@@ -665,7 +671,25 @@ r45        Generate a professional 3-page resume PDF
         return bullets
     
     def _parse_experiences(self, text: str) -> list:
-        """Parse work experience section into structured data - preserves exact text"""
+        """Parse work experience section into structured data - uses LLM when available"""
+        # Try LLM parsing first if available
+        if LLM_PARSER_AVAILABLE:
+            try:
+                print("[pdf-debug] Attempting LLM-based experience parsing...")
+                llm_experiences = parse_experiences_with_llm(text)
+                if llm_experiences:
+                    print(f"[pdf-debug] LLM parsed {len(llm_experiences)} experiences successfully")
+                    # Debug output
+                    for idx, exp in enumerate(llm_experiences, 1):
+                        print(f"  [pdf-debug] Exp {idx}: position={exp.get('position')!r}, company={exp.get('company')!r}, dates={exp.get('dates')!r}, location={exp.get('location')!r}")
+                    return llm_experiences
+                else:
+                    print("[pdf-debug] LLM parsing returned no results, falling back to regex parser")
+            except Exception as e:
+                print(f"[pdf-debug] LLM parsing failed: {e}, falling back to regex parser")
+        
+        # Fallback to original regex-based parsing
+        print("[pdf-debug] Using regex-based experience parsing...")
         experiences = []
         current_exp = None
         
