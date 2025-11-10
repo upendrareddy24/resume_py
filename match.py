@@ -2288,6 +2288,34 @@ def main() -> None:
                             except Exception as e:
                                 print(f"[autofill] Unable to start Greenhouse/Lever automation: {e}")
     # Print filtering summary
+    # Ensure summary variables exist even if earlier branches skipped filtering
+    if "score_threshold" not in locals():
+        try:
+            score_threshold = float(resolved_cfg.get("min_score", 60))
+        except Exception:
+            score_threshold = 60.0
+    if "filtered_jobs" not in locals():
+        filtered_jobs = []
+    if "tailor_threshold" not in locals():
+        try:
+            tailor_threshold = int(resolved_cfg.get("tailor_threshold", 40))
+        except Exception:
+            tailor_threshold = 40
+    if "top_per_company_limit" not in locals():
+        try:
+            top_per_company_limit = int(resolved_cfg.get("top_per_company_limit", 1) or 1)
+        except Exception:
+            top_per_company_limit = 1
+    if "auto_tailor" not in locals():
+        auto_tailor = bool(resolved_cfg.get("auto_tailor_resume", False))
+    if "use_job_app_gen" not in locals():
+        use_job_app_gen = False
+    if "use_llm_resumer" not in locals():
+        use_llm_resumer = False
+    if "company_targets" not in locals():
+        company_targets = []
+    if "target_roles" not in locals():
+        target_roles = resolved_cfg.get("target_roles", [])
     print("\n" + "="*80)
     print("📊 JOB FILTERING & RESUME GENERATION SUMMARY")
     print("="*80)
