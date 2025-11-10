@@ -32,6 +32,9 @@ jobs:
       - name: Set up environment variables
         run: |
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> $GITHUB_ENV
+          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
+          fi
 
       - name: Run Lever/Greenhouse pipeline
         run: |
