@@ -610,103 +610,7 @@ def _query_match(text: str, query: str) -> bool:
     return matched >= max(1, int(len(q_tokens) * 0.5))
 
 
-def fetch_remotive(query: str | None, fetch_limit: int) -> list[dict[str, Any]]:
-    # Docs: https://remotive.com/api/remote-jobs
-    params: dict[str, Any] = {}
-    if query:
-        params["search"] = query
-    resp = requests.get("https://remotive.com/api/remote-jobs", params=params, timeout=60)  # Increased from 30 to 60
-    resp.raise_for_status()
-    data = resp.json()
-    jobs = data.get("jobs", []) or []
-    results: list[dict[str, Any]] = []
-    for it in jobs:
-        title = it.get("title") or ""
-        company = it.get("company_name") or ""
-        loc = it.get("candidate_required_location") or it.get("location") or "Remote"
-        desc = it.get("description") or ""
-        url = it.get("url") or ""
-        results.append({
-            "title": title,
-            "company": company,
-            "location": loc,
-            "description": desc,
-            "url": url,
-            "source": "remotive"
-        })
-        if len(results) >= fetch_limit:
-            break
-    return results
-
-
-def fetch_remoteok(query: str | None, fetch_limit: int) -> list[dict[str, Any]]:
-    # Docs: https://remoteok.com/api
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; JobMatcher/1.0)"}
-    resp = requests.get("https://remoteok.com/api", headers=headers, timeout=60)  # Increased from 30 to 60
-    resp.raise_for_status()
-    data = resp.json()
-    filtered: list[dict[str, Any]] = []
-    unfiltered: list[dict[str, Any]] = []
-    for it in data:
-        # First element can be legal notice (dict with 'legal')
-        if isinstance(it, dict) and it.get("position"):
-            title = it.get("position") or ""
-            company = it.get("company") or ""
-            loc = it.get("location") or "Remote"
-            desc = it.get("description") or ""
-            url = it.get("url") or it.get("apply_url") or ""
-            combined = f"{title}\n{company}\n{loc}\n{desc}"
-            unfiltered.append({
-                "title": title,
-                "company": company,
-                "location": loc,
-                "description": desc,
-                "url": url,
-                "source": "remoteok"
-            })
-            if _query_match(combined, query or ""):
-                filtered.append(unfiltered[-1])
-    # Respect fetch_limit
-    if filtered:
-        return filtered[:fetch_limit]
-    return unfiltered[:fetch_limit]
-
-
-def fetch_arbeitnow(query: str | None, fetch_limit: int) -> list[dict[str, Any]]:
-    # Docs: https://www.arbeitnow.com/api/job-board-api
-    resp = requests.get("https://www.arbeitnow.com/api/job-board-api", timeout=60)  # Increased from 30 to 60
-    resp.raise_for_status()
-    data = resp.json()
-    items = data.get("data", []) or []
-    filtered: list[dict[str, Any]] = []
-    unfiltered: list[dict[str, Any]] = []
-    for it in items:
-        title = it.get("title") or it.get("position") or ""
-        company = it.get("company") or ""
-        loc = it.get("location") or "Remote"
-        desc = it.get("description") or ""
-        url = it.get("url") or ""
-        combined = f"{title}\n{company}\n{loc}\n{desc}"
-        entry = {
-            "title": title,
-            "company": company,
-            "location": loc,
-            "description": desc,
-            "url": url,
-            "source": "arbeitnow"
-        }
-        unfiltered.append(entry)
-        if _query_match(combined, query or ""):
-            filtered.append(entry)
-    if filtered:
-        return filtered[:fetch_limit]
-    return unfiltered[:fetch_limit]
-
-
-FREE_SOURCES = {
-    "remotive": fetch_remotive,
-    "arbeitnow": fetch_arbeitnow,
-}
+# Free-source fetching removed by request.
 
 
 def check_sponsorship_available(jd_text: str, check_enabled: bool = False) -> bool:
@@ -981,22 +885,7 @@ def main() -> None:
             out.append(it)
         return out
 
-    if run_both:
-        # Free block
-        free_src = free_source or free_opts.get("source")
-        free_query = query or free_opts.get("query")
-        if free_src and free_query is not None:
-            free_fetcher = FREE_SOURCES.get(free_src)
-            if not free_fetcher:
-                raise SystemExit(f"Unknown free source: {free_src}")
-            fetched += free_fetcher(free_query, int(resolved_cfg.get("fetch_limit", 200)))
-        fetched = _dedupe_by_url(fetched)
-    else:
-        if free_source and query is not None:
-            fetcher = FREE_SOURCES.get(free_source)
-            if not fetcher:
-                raise SystemExit(f"Unknown free source: {free_source}")
-            fetched = fetcher(query, int(resolved_cfg.get("fetch_limit", 200)))
+    # Free-source fetching removed; skip regardless of config.
         elif serpapi_key and query:
             fetched = fetch_serpapi_google_jobs(query, location, serpapi_key, int(resolved_cfg.get("fetch_limit", 200)))
         else:
