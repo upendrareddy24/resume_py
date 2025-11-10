@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Intelligent Job Application Agent
 
@@ -18,6 +19,10 @@ from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, asdict
 import logging
+try:
+    from job_application_generator import JobApplicationGenerator  # top-level import
+except Exception:
+    JobApplicationGenerator = None  # type: ignore[misc]
 
 from resume_utils import load_resume_data
 
@@ -150,7 +155,6 @@ class JobApplicationAgent:
         try:
             from intelligent_job_scraper import IntelligentJobScraper
             from llm_job_description_extractor import JobDescriptionExtractor
-            from job_application_generator import JobApplicationGenerator
             from selenium_scraper import create_chrome_driver
             
             resume_path = Path(self.config.resume_path).expanduser()
@@ -543,6 +547,9 @@ class JobApplicationAgent:
             raise
 
     def _build_application_generator(self, provider: str) -> Optional[JobApplicationGenerator]:
+        if JobApplicationGenerator is None:
+            logger.error("JobApplicationGenerator is unavailable (import failed).")
+            return None
         try:
             api_key = None
             if provider == "openai":
