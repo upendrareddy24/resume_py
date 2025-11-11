@@ -1,633 +1,287 @@
-from __future__ import annotations
 """
-Intelligent Job Application Agent
-
-An autonomous agent that:
-1. Discovers job opportunities from multiple sources
-2. Analyzes and scores jobs based on your profile
-3. Extracts detailed job descriptions using LLMs
-4. Generates tailored resumes and cover letters
-5. Optionally submits applications automatically
-
-This agent orchestrates all components and can run continuously or on-demand.
+Unified job application generator using LangChain LLM modules.
+Integrates job parser, resume generator, and cover letter generator.
 """
 import os
-import json
-import time
-from typing import Any, Dict, List, Optional, Callable
-from datetime import datetime
-from pathlib import Path
-from dataclasses import dataclass, asdict
-import logging
+import textwrap
+from typing import Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
+
 try:
-    from job_application_generator import JobApplicationGenerator  # top-level import
+    import openai_compat  # noqa: F401
 except Exception:
-    JobApplicationGenerator = None  # type: ignore[misc]
+    openai_compat = None
 
-from resume_utils import load_resume_data
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(name)s] %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger("JobAgent")
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
 
+from enhanced_prompts import ENHANCED_RESUME_PROMPT, ENHANCED_COVER_LETTER_PROMPT
 
-@dataclass
-class AgentConfig:
-    """Configuration for the Job Application Agent"""
-    # Resume and profile
-    resume_path: str
-    candidate_name: str
-    target_roles: List[str]
-    target_companies: List[str] = None
-    target_locations: List[str] = None
-    
-    # Job search settings
-    max_jobs_to_fetch: int = 500
-    max_jobs_to_apply: int = 10
-    min_match_score: float = 60.0
-    
-    # LLM settings
-    openai_api_key: str = None
-    openai_model: str = "gpt-4o-mini"
-    use_embeddings: bool = True
-    
-    # Generation settings
-    auto_generate_resume: bool = True
-    auto_generate_cover_letter: bool = True
-    
-    # Submission settings
-    auto_submit: bool = False
-    submit_providers: List[str] = None  # e.g., ["workday", "greenhouse"]
-    
-    # Output settings
-    output_dir: str = "output"
-    save_applications: bool = True
-    
-    # Agent behavior
-    dry_run: bool = True  # Don't actually submit applications
-    verbose: bool = True
-    max_retries: int = 3
-    retry_delay: int = 5
-    
-    def __post_init__(self):
-        if self.openai_api_key is None:
-            self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        if self.submit_providers is None:
-            self.submit_providers = ["workday"]
-        if self.target_companies is None:
-            self.target_companies = []
-        if self.target_locations is None:
-            self.target_locations = []
+load_dotenv()
 
 
-@dataclass
-class JobApplication:
-    """Represents a complete job application"""
-    job_id: str
-    company: str
-    title: str
-    location: str
-    url: str
-    score: float
-    description: str
-    
-    # Generated assets
-    tailored_resume: Optional[str] = None
-    cover_letter: Optional[str] = None
-    
-    # Metadata
-    discovered_at: str = None
-    generated_at: Optional[str] = None
-    submitted_at: Optional[str] = None
-    status: str = "discovered"  # discovered, generated, submitted, failed
-    error: Optional[str] = None
-    
-    def __post_init__(self):
-        if self.discovered_at is None:
-            self.discovered_at = datetime.now().isoformat()
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-
-class JobApplicationAgent:
+class JobApplicationGenerator:
     """
-    Autonomous agent for job discovery, analysis, and application.
+    Unified class that generates tailored resume and cover letter from job description.
+    Simplifies the original multi-file structure for our use case.
     """
     
-    def __init__(self, config: AgentConfig):
-        """
-        Initialize the agent with configuration.
-        
-        Args:
-            config: AgentConfig instance with all settings
-        """
-        self.config = config
-        self.applications: List[JobApplication] = []
-        self.stats = {
-            "jobs_discovered": 0,
-            "jobs_analyzed": 0,
-            "jobs_above_threshold": 0,
-            "resumes_generated": 0,
-            "cover_letters_generated": 0,
-            "applications_submitted": 0,
-            "failures": 0
-        }
-        self.llm_disabled_reason: Optional[str] = None
-        self.gemini_fallback_attempted = False
-        self.base_resume_text: str = ""
-        self.resume_structured: Optional[Dict[str, Any]] = None
-        
-        # Initialize components
-        self._init_components()
-        
-        logger.info("Job Application Agent initialized")
-        logger.info(f"  Target roles: {', '.join(config.target_roles)}")
-        logger.info(f"  Target companies: {', '.join(config.target_companies) if config.target_companies else 'Any'}")
-        logger.info(f"  Auto-submit: {config.auto_submit} (dry_run={config.dry_run})")
-    
-    def _init_components(self):
-        """Initialize all required components"""
-        try:
-            from intelligent_job_scraper import IntelligentJobScraper
-            from llm_job_description_extractor import JobDescriptionExtractor
-            from selenium_scraper import create_chrome_driver
-            
-            resume_path = Path(self.config.resume_path).expanduser()
-            if not resume_path.exists():
-                raise FileNotFoundError(f"Resume file not found: {resume_path}")
-            self.base_resume_text, self.resume_structured = load_resume_data(resume_path)
-            if self.config.candidate_name == "Candidate" and self.resume_structured:
-                basics = self.resume_structured.get("basics") or {}
-                candidate = basics.get("name") or ""
-                if candidate:
-                    self.config.candidate_name = candidate
-            
-            self.scraper = IntelligentJobScraper(
-                driver_factory=lambda: create_chrome_driver(headless=True),
-                verbose=self.config.verbose
-            )
-            self.job_desc_extractor = None
-            self.app_generator = None
+    def __init__(self, api_key: Optional[str] = None, provider: str = "openai"):
+        self.provider = (provider or os.getenv("LLM_PROVIDER", "openai")).lower()
+        self.resume_text: Optional[str] = None
 
-            if self.config.openai_api_key:
-                self.job_desc_extractor = JobDescriptionExtractor(self.config.openai_api_key)
-                self.app_generator = self._build_application_generator("openai")
-                if self.app_generator:
-                    logger.info("LLM components initialized (OpenAI)")
-                else:
-                    logger.warning("Failed to initialize OpenAI application generator")
-            else:
-                logger.warning("No OpenAI API key - LLM features disabled")
-            
-            # Optionally initialize autofill
-            if self.config.auto_submit:
-                try:
-                    from workday_autofill import WorkdayAutofill
-                    self.autofill_available = True
-                    logger.info("Autofill components available")
-                except Exception:
-                    self.autofill_available = False
-                    logger.warning("Autofill not available")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize components: {e}")
-            raise
-    
-    def discover_jobs(self, sources: List[Dict[str, str]]) -> List[Dict[str, Any]]:
-        """
-        Discover jobs from multiple sources.
-        
-        Args:
-            sources: List of source configurations (URLs, companies, etc.)
-            
-        Returns:
-            List of discovered jobs
-        """
-        logger.info(f"Discovering jobs from {len(sources)} sources...")
-        all_jobs = []
-        
-        for idx, source in enumerate(sources):
-            try:
-                logger.info(f"  [{idx+1}/{len(sources)}] Scraping {source.get('company', source.get('url', 'unknown'))}")
-                
-                if "url" in source:
-                    jobs = self.scraper.scrape_jobs(
-                        url=source["url"],
-                        company=source.get("company", ""),
-                        max_jobs=self.config.max_jobs_to_fetch // len(sources),
-                        wait_seconds=5
-                    )
-                    all_jobs.extend(jobs)
-                    logger.info(f"    Found {len(jobs)} jobs")
-                
-            except Exception as e:
-                logger.error(f"  Failed to scrape {source}: {e}")
-                self.stats["failures"] += 1
-                continue
-        
-        self.stats["jobs_discovered"] = len(all_jobs)
-        logger.info(f"Total jobs discovered: {len(all_jobs)}")
-        return all_jobs
-    
-    def score_job(self, job: Dict[str, Any]) -> float:
-        """
-        Score a job based on match with profile.
-        
-        Args:
-            job: Job dictionary
-            
-        Returns:
-            Match score (0-100)
-        """
-        score = 0.0
-        
-        # Title matching
-        title_lower = job.get("title", "").lower()
-        for target_role in self.config.target_roles:
-            if target_role.lower() in title_lower:
-                score += 40.0
-                break
-        
-        # Company matching
-        if self.config.target_companies:
-            company_lower = job.get("company", "").lower()
-            for target_company in self.config.target_companies:
-                if target_company.lower() in company_lower:
-                    score += 30.0
-                    break
-        else:
-            score += 20.0  # No preference, give some points
-        
-        # Location matching
-        if self.config.target_locations:
-            location_lower = job.get("location", "").lower()
-            for target_loc in self.config.target_locations:
-                if target_loc.lower() in location_lower:
-                    score += 20.0
-                    break
-        else:
-            score += 10.0
-        
-        # Has URL
-        if job.get("url"):
-            score += 10.0
-        
-        return min(score, 100.0)
-    
-    def analyze_jobs(self, jobs: List[Dict[str, Any]]) -> List[JobApplication]:
-        """
-        Analyze and score jobs, creating JobApplication objects.
-        
-        Args:
-            jobs: List of raw job dictionaries
-            
-        Returns:
-            List of JobApplication objects, sorted by score
-        """
-        logger.info(f"Analyzing {len(jobs)} jobs...")
-        applications = []
-        
-        for idx, job in enumerate(jobs):
-            try:
-                score = self.score_job(job)
-                
-                app = JobApplication(
-                    job_id=job.get("url") or f"{job.get('company')}_{job.get('title')}_{idx}",
-                    company=job.get("company", "Unknown"),
-                    title=job.get("title", "Unknown"),
-                    location=job.get("location", "Unknown"),
-                    url=job.get("url", ""),
-                    score=score,
-                    description=job.get("description", "")
-                )
-                
-                applications.append(app)
-                
-            except Exception as e:
-                logger.error(f"  Error analyzing job {idx}: {e}")
-                continue
-        
-        # Sort by score
-        applications.sort(key=lambda x: x.score, reverse=True)
-        
-        self.stats["jobs_analyzed"] = len(applications)
-        above_threshold = [a for a in applications if a.score >= self.config.min_match_score]
-        self.stats["jobs_above_threshold"] = len(above_threshold)
-        
-        logger.info(f"Analysis complete: {len(above_threshold)} jobs above threshold ({self.config.min_match_score})")
-        
-        return applications
-    
-    def enrich_job_description(self, application: JobApplication) -> bool:
-        """
-        Enrich job description using LLM extraction.
-        
-        Args:
-            application: JobApplication to enrich
-            
-        Returns:
-            True if successful
-        """
-        if not self.job_desc_extractor:
-            return False
-        
-        try:
-            if not application.description or len(application.description) < 100:
-                if application.url:
-                    logger.info(f"  [LLM] Enriching job description for {application.company}...")
-                    import requests
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-                    }
-                    resp = requests.get(application.url, timeout=30, headers=headers)
-                    resp.raise_for_status()
-                    
-                    extracted = self.job_desc_extractor.extract_job_description(
-                        resp.text,
-                        application.company,
-                        application.title
-                    )
-                    
-                    if extracted and extracted.get("description"):
-                        # Build comprehensive description
-                        desc_parts = []
-                        for key in ["description", "responsibilities", "minimum_qualifications", "preferred_qualifications"]:
-                            if extracted.get(key):
-                                desc_parts.append(extracted[key])
-                        
-                        application.description = "\n\n".join(desc_parts)
-                        logger.info(f"  [LLM] Enriched description: {len(application.description)} chars")
-                        return True
-            
-            return len(application.description) > 100
-            
-        except Exception as e:
-            logger.error(f"  [LLM] Enrichment failed: {e}")
-            return False
-    
-    def generate_application_materials(self, application: JobApplication) -> bool:
-        """
-        Generate tailored resume and cover letter.
-        
-        Args:
-            application: JobApplication to generate materials for
-            
-        Returns:
-            True if successful
-        """
-        if not self.app_generator:
-            logger.warning("  No LLM available for generation - falling back to base resume")
-            if self.base_resume_text:
-                application.tailored_resume = self.base_resume_text
-                application.generated_at = datetime.now().isoformat()
-                application.status = "generated"
-                self.stats["resumes_generated"] += 1
-                return True
-            return False
-
-        if self.llm_disabled_reason:
-            logger.warning("  LLM generation skipped for %s (reason: %s)", application.company, self.llm_disabled_reason)
-            if self.base_resume_text:
-                logger.info("  Falling back to base resume due to LLM disabled")
-                application.tailored_resume = self.base_resume_text
-                application.generated_at = datetime.now().isoformat()
-                application.status = "generated"
-                self.stats["resumes_generated"] += 1
-                return True
-            return False
-        
-        try:
-            logger.info(f"  [LLM] Generating application materials for {application.company}...")
-            
-            result = self.app_generator.generate_application_package(
-                application.description,
-                application.company,
-                application.title,
-                parallel=True
+        if self.provider == "openai":
+            openai_key = api_key or os.getenv("OPENAI_API_KEY")
+            if not openai_key:
+                raise ValueError("OpenAI API key required for OpenAI provider")
+            model_name = os.getenv("OPENAI_RESUME_MODEL", "gpt-4o")
+            self.llm = ChatOpenAI(
+                model=model_name,
+                api_key=openai_key,
+                temperature=0.4,
             )
-            
-            if result.get("resume"):
-                application.tailored_resume = result["resume"]
-                self.stats["resumes_generated"] += 1
-                logger.info(f"  [LLM] Generated tailored resume")
-            
-            if result.get("cover_letter"):
-                application.cover_letter = result["cover_letter"]
-                self.stats["cover_letters_generated"] += 1
-                logger.info(f"  [LLM] Generated cover letter")
-            
-            application.generated_at = datetime.now().isoformat()
-            application.status = "generated"
-            
-            return bool(result.get("resume") or result.get("cover_letter"))
-            
-        except Exception as e:
-            logger.error(f"  [LLM] Generation failed: {e}")
-            msg = str(e).lower()
-            if "insufficient_quota" in msg or "exceeded your current quota" in msg:
-                gemini_key = os.getenv("GEMINI_API_KEY")
-                if gemini_key and not self.gemini_fallback_attempted:
-                    logger.warning("  OpenAI quota exceeded. Attempting Gemini fallback...")
-                    self.gemini_fallback_attempted = True
+            self.gemini_model = None
+        elif self.provider == "gemini":
+            if genai is None:
+                raise ValueError("google-generativeai package is required for Gemini provider")
+            gemini_key = api_key or os.getenv("GEMINI_API_KEY")
+            if not gemini_key:
+                raise ValueError("Gemini API key required for Gemini provider")
+            genai.configure(api_key=gemini_key)
+            # Prefer stable, supported IDs; fall back if unavailable
+            preferred = os.getenv("GEMINI_RESUME_MODEL", "gemini-2.5-flash")
+            try:
+                self.gemini_model = genai.GenerativeModel(preferred)
+            except Exception:
+                # Fallback to flash if pro is not available for current API
+                fallback = "gemini-1.5-flash"
+                self.gemini_model = genai.GenerativeModel(fallback)
+                os.environ.setdefault("GEMINI_RESUME_MODEL", fallback)
+            self.llm = None
+        else:
+            raise ValueError(f"Unsupported LLM provider: {self.provider}")
+
+    @staticmethod
+    def _normalize_meta_field(value: str | None) -> str:
+        if not value:
+            return ""
+        cleaned = value.strip()
+        if cleaned.lower() in {"not specified", "not specified."}:
+            return ""
+        return cleaned
+
+    @staticmethod
+    def _preprocess_template(template: str) -> str:
+        """Remove leading whitespace and indentation."""
+        return textwrap.dedent(template)
+
+    def set_resume(self, resume_text: str) -> None:
+        """Set the resume text to be used for generation."""
+        self.resume_text = resume_text
+
+    @staticmethod
+    def _compose_job_context(job_description: str, job_summary: str | None) -> str:
+        """Combine summary and description while keeping size manageable."""
+        description = (job_description or "").strip()
+        summary = (job_summary or "").strip() if job_summary else ""
+
+        context_parts = []
+        if summary:
+            context_parts.append("Job Summary:")
+            context_parts.append(summary)
+        if description:
+            if summary:
+                context_parts.append("\nFull Job Description:")
+            context_parts.append(description)
+
+        context = "\n".join(context_parts).strip() or "No job description provided."
+        max_chars = 8000
+        if len(context) > max_chars:
+            context = context[:max_chars] + "\n\n[Content truncated for brevity]"
+        return context
+
+    def summarize_job_description(self, job_description: str) -> str:
+        """
+        Summarize job description to extract key requirements.
+        Based on llm_job_parser functionality.
+        """
+        template = self._preprocess_template("""
+        You are an expert at analyzing job descriptions.
+        Extract and summarize the key information from this job description:
+        
+        - Role/Title
+        - Key Responsibilities (top 5)
+        - Required Skills and Qualifications
+        - Preferred/Nice-to-have Skills
+        - Company Culture/Values (if mentioned)
+        
+        Job Description:
+        {text}
+        
+        Provide a concise, structured summary.
+        """)
+        
+        return self._invoke_model(template, {"text": job_description})
+
+    def _invoke_model(self, template: str, variables: Dict[str, Any]) -> str:
+        normalized_vars = {k: (v if isinstance(v, str) else str(v)) for k, v in variables.items()}
+        if self.provider == "openai":
+            prompt = ChatPromptTemplate.from_template(template)
+            chain = prompt | self.llm | StrOutputParser()
+            return chain.invoke(normalized_vars)
+        else:
+            prompt_text = template.format(**normalized_vars)
+            try:
+                response = self.gemini_model.generate_content(prompt_text)
+            except Exception as e:
+                # Retry once with a safer fallback model if available
+                msg = str(e).lower()
+                if "not found" in msg or "not supported" in msg:
                     try:
-                        self.app_generator = self._build_application_generator("gemini")
-                        if self.app_generator:
-                            self.llm_disabled_reason = None
-                            return self.generate_application_materials(application)
-                    except Exception as gemini_exc:
-                        logger.error("  Gemini fallback initialization failed: %s", gemini_exc)
-                # Final fallback to base resume if available
-                if self.base_resume_text:
-                    logger.warning("  Falling back to base resume due to LLM failure")
-                    application.tailored_resume = self.base_resume_text
-                    application.generated_at = datetime.now().isoformat()
-                    application.status = "generated"
-                    self.stats["resumes_generated"] += 1
-                    return True
-                self.llm_disabled_reason = "insufficient_quota"
-                logger.error("  Disabling LLM generation for remainder of run due to insufficient quota.")
-            application.error = str(e)
-            application.status = "failed"
-            self.stats["failures"] += 1
-            return False
-    
-    def save_application(self, application: JobApplication) -> None:
-        """Save application materials to disk"""
-        if not self.config.save_applications:
-            return
-        
-        output_dir = Path(self.config.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create company subdirectory
-        safe_company = "".join(c if c.isalnum() else "_" for c in application.company)
-        company_dir = output_dir / safe_company
-        company_dir.mkdir(exist_ok=True)
-        
-        # Save resume
-        if application.tailored_resume:
-            resume_path = company_dir / f"resume_{safe_company}.txt"
-            with open(resume_path, "w", encoding="utf-8") as f:
-                f.write(application.tailored_resume)
-            
-            # Also generate a PDF version of the resume for convenience
-            try:
-                # Lazy import to avoid hard dependency if reportlab isn't installed
-                from pdf_generator import generate_resume_pdf  # type: ignore
-                tailored_dir = output_dir / "tailored_resumes"
-                tailored_dir.mkdir(exist_ok=True)
-                # Build a safe filename with company and title
-                safe_title = "".join(c if c.isalnum() else "_" for c in (application.title or "resume"))
-                pdf_path = tailored_dir / f"{safe_company}_{safe_title}.pdf"
-                generate_resume_pdf(
-                    application.tailored_resume,
-                    str(pdf_path),
-                    job_title=application.title,
-                    company_name=application.company,
-                    candidate_name=self.config.candidate_name,
-                )
-            except Exception as e:
-                logger.warning("  Could not generate PDF resume: %s", e)
-        
-        # Save cover letter
-        if application.cover_letter:
-            cover_path = company_dir / f"cover_letter_{safe_company}.txt"
-            with open(cover_path, "w", encoding="utf-8") as f:
-                f.write(application.cover_letter)
-        
-        # Save metadata
-        metadata_path = company_dir / f"metadata_{safe_company}.json"
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(application.to_dict(), f, indent=2)
-        
-        logger.info(f"  Saved application materials to {company_dir}")
-    
-    def run(self, sources: List[Dict[str, str]]) -> Dict[str, Any]:
+                        self.gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+                        response = self.gemini_model.generate_content(prompt_text)
+                    except Exception:
+                        raise
+                else:
+                    raise
+            if hasattr(response, "text") and response.text:
+                return response.text.strip()
+            if hasattr(response, "candidates"):
+                for cand in response.candidates:
+                    content = getattr(cand, "content", None)
+                    if content and getattr(content, "parts", None):
+                        pieces = []
+                        for part in content.parts:
+                            text = getattr(part, "text", "")
+                            if text:
+                                pieces.append(text)
+                        joined = "".join(pieces).strip()
+                        if joined:
+                            return joined
+            return ""
+
+    def generate_tailored_resume(
+        self,
+        job_description: str,
+        company: str,
+        role: str,
+        job_summary: str | None = None,
+    ) -> str:
         """
-        Run the complete agent workflow.
+        Generate ATS-optimized resume tailored to job description.
+        Based on llm_generate_resume_from_job functionality.
+        """
+        if not self.resume_text:
+            raise ValueError("Base resume text must be set before generating outputs.")
+
+        company = self._normalize_meta_field(company)
+        role = self._normalize_meta_field(role)
+
+        summary = job_summary or self.summarize_job_description(job_description)
+        job_context = self._compose_job_context(job_description, summary)
+
+        template = self._preprocess_template(ENHANCED_RESUME_PROMPT)
+
+        return self._invoke_model(template, {
+            "company_name": company,
+            "job_title": role,
+            "job_description": job_context,
+            "resume_text": self.resume_text,
+        })
+
+    def generate_cover_letter(
+        self,
+        job_description: str,
+        company: str,
+        role: str,
+        job_summary: str | None = None,
+    ) -> str:
+        """
+        Generate compelling cover letter based on job description and resume.
+        Based on llm_generate_cover_letter_from_job functionality.
+        """
+        if not self.resume_text:
+            raise ValueError("Base resume text must be set before generating outputs.")
+
+        company = self._normalize_meta_field(company)
+        role = self._normalize_meta_field(role)
+
+        summary = job_summary or self.summarize_job_description(job_description)
+        job_context = self._compose_job_context(job_description, summary)
+
+        template = self._preprocess_template(ENHANCED_COVER_LETTER_PROMPT)
+
+        return self._invoke_model(template, {
+            "company_name": company,
+            "job_title": role,
+            "job_description": job_context,
+            "resume_text": self.resume_text,
+        })
+
+    def generate_application_package(
+        self,
+        job_description: str,
+        company: str,
+        role: str,
+        parallel: bool = True
+    ) -> Dict[str, str]:
+        """
+        Generate both tailored resume and cover letter.
         
         Args:
-            sources: List of job sources to search
-            
+            job_description: Full job description text
+            company: Company name
+            role: Role/title
+            parallel: Generate resume and cover letter in parallel (faster)
+        
         Returns:
-            Statistics dictionary
+            dict: {"resume": str, "cover_letter": str, "job_summary": str}
         """
-        start_time = time.time()
-        logger.info("=" * 60)
-        logger.info("JOB APPLICATION AGENT STARTING")
-        logger.info("=" * 60)
+        # Always generate job summary first
+        job_summary = self.summarize_job_description(job_description)
+
+        company_clean = self._normalize_meta_field(company)
+        role_clean = self._normalize_meta_field(role)
         
-        try:
-            # Step 1: Discover jobs
-            jobs = self.discover_jobs(sources)
-            
-            # Step 2: Analyze and score
-            self.applications = self.analyze_jobs(jobs)
-            
-            # Step 3: Process top matches
-            top_matches = [
-                app for app in self.applications 
-                if app.score >= self.config.min_match_score
-            ][:self.config.max_jobs_to_apply]
-            
-            logger.info(f"Processing top {len(top_matches)} matches...")
-            
-            for idx, app in enumerate(top_matches):
-                logger.info(f"[{idx+1}/{len(top_matches)}] {app.company} - {app.title} (Score: {app.score:.1f})")
+        if parallel:
+            # Generate resume and cover letter in parallel
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                resume_future = executor.submit(
+                    self.generate_tailored_resume,
+                    job_description,
+                    company_clean,
+                    role_clean,
+                    job_summary,
+                )
+                cover_letter_future = executor.submit(
+                    self.generate_cover_letter,
+                    job_description,
+                    company_clean,
+                    role_clean,
+                    job_summary,
+                )
                 
-                # Enrich description if needed
-                if len(app.description) < 100:
-                    self.enrich_job_description(app)
-                
-                # Generate materials
-                if self.config.auto_generate_resume or self.config.auto_generate_cover_letter:
-                    success = self.generate_application_materials(app)
-                    
-                    if success:
-                        self.save_application(app)
-                    
-                    # Rate limiting
-                    time.sleep(2)
-            
-            # Step 4: Submit applications (if enabled)
-            if self.config.auto_submit and not self.config.dry_run:
-                logger.info("Auto-submit enabled - submitting applications...")
-                # TODO: Implement submission logic
-                pass
-            
-            elapsed = time.time() - start_time
-            logger.info("=" * 60)
-            logger.info("AGENT RUN COMPLETE")
-            logger.info(f"  Time elapsed: {elapsed:.1f}s")
-            logger.info(f"  Jobs discovered: {self.stats['jobs_discovered']}")
-            logger.info(f"  Jobs above threshold: {self.stats['jobs_above_threshold']}")
-            logger.info(f"  Resumes generated: {self.stats['resumes_generated']}")
-            logger.info(f"  Cover letters generated: {self.stats['cover_letters_generated']}")
-            logger.info(f"  Applications submitted: {self.stats['applications_submitted']}")
-            logger.info(f"  Failures: {self.stats['failures']}")
-            logger.info("=" * 60)
-            
+                return {
+                    "resume": resume_future.result(),
+                    "cover_letter": cover_letter_future.result(),
+                    "job_summary": job_summary
+                }
+        else:
+            # Sequential generation
             return {
-                **self.stats,
-                "elapsed_seconds": elapsed,
-                "applications": [app.to_dict() for app in top_matches]
+                "resume": self.generate_tailored_resume(
+                    job_description, company_clean, role_clean, job_summary
+                ),
+                "cover_letter": self.generate_cover_letter(
+                    job_description, company_clean, role_clean, job_summary
+                ),
+                "job_summary": job_summary
             }
-            
-        except Exception as e:
-            logger.error(f"Agent run failed: {e}")
-            raise
-
-    def _build_application_generator(self, provider: str) -> Optional[JobApplicationGenerator]:
-        if JobApplicationGenerator is None:
-            logger.error("JobApplicationGenerator is unavailable (import failed).")
-            return None
-        try:
-            api_key = None
-            if provider == "openai":
-                api_key = self.config.openai_api_key or os.getenv("OPENAI_API_KEY")
-            elif provider == "gemini":
-                api_key = os.getenv("GEMINI_API_KEY")
-            generator = JobApplicationGenerator(api_key=api_key, provider=provider)
-            generator.set_resume(self.base_resume_text)
-            if provider == "gemini":
-                logger.info("Gemini fallback initialized successfully")
-            return generator
-        except Exception as exc:
-            logger.error("  Failed to initialize %s application generator: %s", provider, exc)
-            return None
-
-
-def create_agent_from_config(config_path: str) -> JobApplicationAgent:
-    """
-    Create an agent from a JSON configuration file.
-    
-    Args:
-        config_path: Path to config.json
-        
-    Returns:
-        Configured JobApplicationAgent
-    """
-    with open(config_path, 'r') as f:
-        config_dict = json.load(f)
-    
-    agent_config = AgentConfig(
-        resume_path=config_dict.get("resume", "input/resume.yml"),
-        candidate_name=config_dict.get("cover_letter", {}).get("name", "Candidate"),
-        target_roles=config_dict.get("target_roles", ["software engineer"]),
-        target_companies=config_dict.get("companies", []),
-        max_jobs_to_fetch=config_dict.get("fetch_limit", 500),
-        max_jobs_to_apply=config_dict.get("top", 15),
-        auto_generate_resume=config_dict.get("auto_tailor_resume", True),
-        auto_generate_cover_letter=True,
-        auto_submit=config_dict.get("autofill", {}).get("enabled", False),
-        output_dir=config_dict.get("output", {}).get("dir", "output"),
-        verbose=True
-    )
-    
-    return JobApplicationAgent(agent_config)
 
