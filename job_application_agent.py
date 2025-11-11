@@ -474,6 +474,25 @@ class JobApplicationAgent:
             resume_path = company_dir / f"resume_{safe_company}.txt"
             with open(resume_path, "w", encoding="utf-8") as f:
                 f.write(application.tailored_resume)
+            
+            # Also generate a PDF version of the resume for convenience
+            try:
+                # Lazy import to avoid hard dependency if reportlab isn't installed
+                from pdf_generator import generate_resume_pdf  # type: ignore
+                tailored_dir = output_dir / "tailored_resumes"
+                tailored_dir.mkdir(exist_ok=True)
+                # Build a safe filename with company and title
+                safe_title = "".join(c if c.isalnum() else "_" for c in (application.title or "resume"))
+                pdf_path = tailored_dir / f"{safe_company}_{safe_title}.pdf"
+                generate_resume_pdf(
+                    application.tailored_resume,
+                    str(pdf_path),
+                    job_title=application.title,
+                    company_name=application.company,
+                    candidate_name=self.config.candidate_name,
+                )
+            except Exception as e:
+                logger.warning("  Could not generate PDF resume: %s", e)
         
         # Save cover letter
         if application.cover_letter:
