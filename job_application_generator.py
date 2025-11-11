@@ -55,8 +55,15 @@ class JobApplicationGenerator:
             if not gemini_key:
                 raise ValueError("Gemini API key required for Gemini provider")
             genai.configure(api_key=gemini_key)
-            model_name = os.getenv("GEMINI_RESUME_MODEL", "gemini-1.5-pro-latest")
-            self.gemini_model = genai.GenerativeModel(model_name)
+            # Prefer stable, supported IDs; fall back if unavailable
+            preferred = os.getenv("GEMINI_RESUME_MODEL", "gemini-2.5-flash")
+            try:
+                self.gemini_model = genai.GenerativeModel(preferred)
+            except Exception:
+                # Fallback to flash if pro is not available for current API
+                fallback = "gemini-1.5-flash"
+                self.gemini_model = genai.GenerativeModel(fallback)
+                os.environ.setdefault("GEMINI_RESUME_MODEL", fallback)
             self.llm = None
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
@@ -131,7 +138,19 @@ class JobApplicationGenerator:
             return chain.invoke(normalized_vars)
         else:
             prompt_text = template.format(**normalized_vars)
-            response = self.gemini_model.generate_content(prompt_text)
+            try:
+                response = self.gemini_model.generate_content(prompt_text)
+            except Exception as e:
+                # Retry once with a safer fallback model if available
+                msg = str(e).lower()
+                if "not found" in msg or "not supported" in msg:
+                    try:
+                        self.gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+                        response = self.gemini_model.generate_content(prompt_text)
+                    except Exception:
+                        raise
+                else:
+                    raise
             if hasattr(response, "text") and response.text:
                 return response.text.strip()
             if hasattr(response, "candidates"):

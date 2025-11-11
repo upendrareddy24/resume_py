@@ -381,15 +381,24 @@ class JobApplicationAgent:
             True if successful
         """
         if not self.app_generator:
-            logger.warning("  No LLM available for generation")
+            logger.warning("  No LLM available for generation - falling back to base resume")
+            if self.base_resume_text:
+                application.tailored_resume = self.base_resume_text
+                application.generated_at = datetime.now().isoformat()
+                application.status = "generated"
+                self.stats["resumes_generated"] += 1
+                return True
             return False
 
         if self.llm_disabled_reason:
-            logger.warning(
-                "  LLM generation skipped for %s (reason: %s)",
-                application.company,
-                self.llm_disabled_reason,
-            )
+            logger.warning("  LLM generation skipped for %s (reason: %s)", application.company, self.llm_disabled_reason)
+            if self.base_resume_text:
+                logger.info("  Falling back to base resume due to LLM disabled")
+                application.tailored_resume = self.base_resume_text
+                application.generated_at = datetime.now().isoformat()
+                application.status = "generated"
+                self.stats["resumes_generated"] += 1
+                return True
             return False
         
         try:
@@ -432,6 +441,14 @@ class JobApplicationAgent:
                             return self.generate_application_materials(application)
                     except Exception as gemini_exc:
                         logger.error("  Gemini fallback initialization failed: %s", gemini_exc)
+                # Final fallback to base resume if available
+                if self.base_resume_text:
+                    logger.warning("  Falling back to base resume due to LLM failure")
+                    application.tailored_resume = self.base_resume_text
+                    application.generated_at = datetime.now().isoformat()
+                    application.status = "generated"
+                    self.stats["resumes_generated"] += 1
+                    return True
                 self.llm_disabled_reason = "insufficient_quota"
                 logger.error("  Disabling LLM generation for remainder of run due to insufficient quota.")
             application.error = str(e)
