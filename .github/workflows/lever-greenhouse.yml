@@ -1,9 +1,9 @@
 name: Lever & Greenhouse Pipeline
 
 on:
-  # schedule:
-  #   # Run daily at 10 AM UTC
-  #   - cron: '0 10 * * *'
+  schedule:
+    # Run daily at 10 AM UTC
+    - cron: '0 10 * * *'
   workflow_dispatch:
 
 jobs:
@@ -35,6 +35,7 @@ jobs:
           if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
           fi
+          echo "GEMINI_RESUME_MODEL=gemini-2.5-flash" >> $GITHUB_ENV
 
       - name: Run Lever/Greenhouse pipeline
         run: |
