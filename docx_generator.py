@@ -145,30 +145,26 @@ class WordDocumentGenerator:
                 name_run.font.color.rgb = RGBColor(0, 0, 0)
             
             contact_details = _extract_contact_details(content, sections_dict)
-            mail_phone_parts = []
+            # Single centered line: Email | Phone | GitHub | LinkedIn (only present values, in this order)
+            contact_line_parts = []
             if contact_details.get("email"):
-                mail_phone_parts.append(contact_details["email"])
+                contact_line_parts.append(contact_details["email"])
             if contact_details.get("phone"):
-                mail_phone_parts.append(contact_details["phone"])
-
-            if mail_phone_parts:
-                contact_para = doc.add_paragraph(" | ".join(mail_phone_parts))
-                contact_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                contact_run = contact_para.runs[0]
-                contact_run.font.size = Pt(10)
-                contact_run.font.color.rgb = RGBColor(80, 80, 80)
-
-            if contact_details.get("linkedin"):
-                linkedin_para = doc.add_paragraph(f"LinkedIn URL: {contact_details['linkedin']}")
-                linkedin_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                linkedin_para.paragraph_format.space_after = Pt(2)
-
+                contact_line_parts.append(contact_details["phone"])
             if contact_details.get("github"):
-                github_para = doc.add_paragraph(f"Git Link: {contact_details['github']}")
-                github_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                github_para.paragraph_format.space_after = Pt(6)
+                contact_line_parts.append(contact_details["github"])
+            if contact_details.get("linkedin"):
+                contact_line_parts.append(contact_details["linkedin"])
+            if contact_line_parts:
+                contact_para = doc.add_paragraph(" | ".join(contact_line_parts))
+                contact_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                contact_para.paragraph_format.space_after = Pt(6)
+                if contact_para.runs:
+                    run = contact_para.runs[0]
+                    run.font.size = Pt(10)
+                    run.font.color.rgb = RGBColor(80, 80, 80)
 
-            if mail_phone_parts or contact_details.get("linkedin") or contact_details.get("github"):
+            if contact_line_parts:
                 doc.add_paragraph()
             
             # Professional Summary (15 bullet points)
