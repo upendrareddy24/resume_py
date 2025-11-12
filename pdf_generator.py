@@ -108,6 +108,41 @@ class PDFGenerator:
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()
     
+    def _experiences_from_structured(self, work_items: list[dict]) -> list[dict]:
+        """Build experiences list from structured YAML work entries."""
+        results: list[dict] = []
+        if not work_items:
+            return results
+        for job in work_items:
+            try:
+                position = (job.get("position") or job.get("title") or "").strip()
+                company = (job.get("company") or "").strip()
+                start = job.get("startDate") or job.get("start_date") or ""
+                end = job.get("endDate") or job.get("end_date") or ""
+                dates = " – ".join([p for p in [start, end] if p]).strip()
+                location = (job.get("location") or "").strip()
+                # Merge responsibilities and highlights into bullets
+                bullets: list[str] = []
+                for key in ("responsibilities", "highlights"):
+                    vals = job.get(key) or []
+                    if isinstance(vals, list):
+                        bullets.extend([str(v).strip() for v in vals if str(v).strip()])
+                # Also include 'summary'/'achievements' if present
+                for key in ("achievements",):
+                    vals = job.get(key) or []
+                    if isinstance(vals, list):
+                        bullets.extend([str(v).strip() for v in vals if str(v).strip()])
+                results.append({
+                    "position": position,
+                    "company": company,
+                    "dates": dates,
+                    "location": location,
+                    "bullets": bullets,
+                })
+            except Exception:
+                continue
+        return results
+    
     def _setup_custom_styles(self):
         """Setup custom paragraph styles for professional formatting"""
         # Header style
@@ -185,7 +220,8 @@ class PDFGenerator:
         output_path: str,
         job_title: str = "",
         company_name: str = "",
-        candidate_name: str = ""
+        candidate_name: str = "",
+        structured: dict | None = None
     ) -> bool:
         """
 r45        Generate a professional 3-page resume PDF
@@ -319,18 +355,29 @@ r45        Generate a professional 3-page resume PDF
                     story.append(Paragraph("WORK EXPERIENCE", self.styles['CustomSubHeader']))
                     exp_text = sections[key]
                     
-                    # Try to parse structured experiences
-                    experiences = self._parse_experiences(exp_text)
-                    # Fallback: loose parse to ensure up to 5 distinct companies render
-                    if len(experiences) < 5:
-                        loose = self._parse_experiences_loose(exp_text)
-                        # merge unique by (position,company)
-                        seen = {(e.get('position',''), e.get('company','')) for e in experiences}
-                        for e in loose:
+                    # If structured data provided, prefer structured work history
+                    experiences = []
+                    if structured and isinstance(structured.get("work"), list):
+                        experiences = self._experiences_from_structured(structured.get("work"))
+                    
+                    # Otherwise try to parse experiences from text
+                    if not experiences:
+                        experiences = self._parse_experiences(exp_text)
+                    # Fallbacks: ensure up to 5 distinct experiences by merging from section and then whole content
+                    def _merge_unique(base: list, extra: list) -> list:
+                        seen_local = {(b.get('position',''), b.get('company','')) for b in base}
+                        for e in extra:
                             key = (e.get('position',''), e.get('company',''))
-                            if key not in seen and (key[0] or key[1]):
-                                experiences.append(e)
-                                seen.add(key)
+                            if key not in seen_local and (key[0] or key[1]):
+                                base.append(e)
+                                seen_local.add(key)
+                        return base
+                    if len(experiences) < 5:
+                        # Merge loose parse from the experience section
+                        experiences = _merge_unique(experiences, self._parse_experiences_loose(exp_text))
+                    if len(experiences) < 5:
+                        # As a final safety, merge from the entire resume content
+                        experiences = _merge_unique(experiences, self._parse_experiences_loose(content))
                     
                     # Debug: Print parsed experiences
                     print(f"  [pdf-debug] Parsed {len(experiences)} experiences")
@@ -338,7 +385,7 @@ r45        Generate a professional 3-page resume PDF
                         print(f"  [pdf-debug] Exp {i+1}: position='{exp.get('position', 'N/A')}', company='{exp.get('company', 'N/A')}', dates='{exp.get('dates', 'N/A')}', location='{exp.get('location', 'N/A')}'")
                     
                     if experiences:
-                        for exp in experiences[:5]:  # Show all 5 companies
+                        for exp in experiences[:5]:  # Show up to 5 companies
                             # Role and Company - preserve exact format from text
                             position = exp.get('position', '').strip()
                             company = exp.get('company', '').strip()

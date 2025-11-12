@@ -490,6 +490,7 @@ class JobApplicationAgent:
                     job_title=application.title,
                     company_name=application.company,
                     candidate_name=self.config.candidate_name,
+                    structured=self.resume_structured,
                 )
             except Exception as e:
                 logger.warning("  Could not generate PDF resume: %s", e)
