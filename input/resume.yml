@@ -1,100 +1,238 @@
-name: Upendra Reddy Machunuru
-location: Farmington Hills, MI 48335
-phone: "+1-567-294-3353"
-email: upendramach24@gmail.com
-linkedin: "LinkedIn"
-
-professional_summary: >
-  TÜV SÜD Certified Functional Safety Engineer with 10+ years of automotive experience 
-  in steering, braking, and ADAS systems. Proven expertise in FMEA, STPA, FMEDA, FTA, DFA, 
-  Safety Plan creation, Safety Case compilation, and SEooC Safety Manual development. 
-  Trusted technical safety lead supporting OEM and Tier-1 audits, mentoring cross-functional 
-  teams on ISO 26262 and ASPICE compliance.
-
+basics:
+  name: Upendra Reddy Machunuru
+  label: Senior Systems Engineer | Functional Safety | Steering & Braking
+  email: upendramach24@gmail.com
+  phone: +1-567-294-3353
+  profiles:
+  - network: LinkedIn
+    username: upendra-reddy-machunuru-4b66a525
+    url: https://www.linkedin.com/in/upendra-reddy-machunuru-4b66a525/
+summary:
+- 13+ years of experience in Functional Safety, Systems Engineering, ADAS, Steering,
+  and Braking domains across Bosch, Continental, and global OEM programs.
+- "Hands-on expertise with ISO 26262 (ASIL A\u2013D), SOTIF, HARA, FSC, TSC, TSR,\
+  \ SSR, and complete safety lifecycle implementation."
+- Specialized in EPS, ESC, iBooster, ADAS camera systems, autonomous features, diagnostics
+  (UDS), and embedded automotive platforms.
+- Strong experience in DOORS, Polarion, Jira, Confluence, and requirement decomposition
+  across SYS/SWE/Hardware layers.
+- Developed DXL automation scripts accelerating traceability coverage, metrics generation,
+  and audit readiness.
+- Owner of cross-functional safety analysis including FMEA, FTA, DFA, FIT rate calculation,
+  PMHF, SPFM, LFM evaluations.
+- Experience in V-Model workflows, system architecture, vehicle integration, SIL/HIL
+  validation, and rapid prototyping.
+- Skilled in Python, C, C++, ASCET model development, CAN, LIN, Ethernet, and automotive
+  debugging tools.
+- Led requirement alignment, stakeholder communication, and cross-domain discussions
+  for major OEM safety releases.
+- Conducted vehicle-level validation, winter testing, safety feature bring-up, and
+  system-level defect investigations.
+- Supported ASPICE L2/L3 assessments, prepared documentation, and owned closure of
+  findings across SWE/SYS processes.
+skills:
+- name: Programming Languages
+  keywords:
+  - Python
+  - C
+  - C++
+  - Shell Script
+  - SQL
+- name: Automotive Tools & Platforms
+  keywords:
+  - DOORS
+  - Polarion
+  - Jira
+  - Confluence
+  - ASCET
+  - CANoe
+  - CANalyzer
+  - Vector Tools
+- name: Safety & Standards
+  keywords:
+  - ISO 26262
+  - SOTIF
+  - ASPICE
+  - STPA
+  - FMEA
+  - FTA
+  - HARA
+- name: Vehicle Domains
+  keywords:
+  - EPS
+  - ESC
+  - iBooster
+  - ADAS
+  - Braking Systems
+  - Steering Control
+- name: Validation & Testing
+  keywords:
+  - SIL
+  - HIL
+  - Unit Testing
+  - Integration Testing
+  - Diagnostics UDS
+- name: Methods
+  keywords:
+  - V-Model
+  - Agile Scrum
+  - Traceability Management
+  - System Design
+work:
+- company: Continental Automotive India Private Limited
+  position: "Software Requirements Manager \u2013 ADAS / Steering / Braking"
+  location: Bangalore, India
+  startDate: May 2019
+  endDate: Dec 2021
+  technologies:
+  - DOORS
+  - DXL
+  - Python
+  - Jira
+  - Confluence
+  highlights:
+  - Imported, structured, and decomposed system and software requirements (SYS/SWE
+    levels) in DOORS.
+  - Developed DXL scripts to automate metrics, ensuring 100% traceability and improving
+    audit readiness.
+  - Created baselines, managed change requests, and ensured consistent configuration
+    management.
+  - Collaborated with ADAS, steering, and braking teams to align requirements with
+    OEM specifications.
+  - Performed SYS.2/SYS.3 gap analysis and resolved traceability violations across
+    all modules.
+  - Prepared detailed requirement documentation for releases and change control boards.
+  - Conducted requirement audits and improved review quality by implementing structured
+    templates.
+  - Supported internal ASPICE assessments with full documentation and closure of findings.
+  - Worked with validation teams to ensure requirement-to-test coverage and completeness.
+  - Created automation utilities reducing manual linking and documentation time significantly.
+  achievements:
+  - Improved requirement traceability accuracy by 40% using advanced DXL automation.
+  - Reduced review turnaround time by 30% through optimized baselining processes.
+  - Achieved 100% ASPICE compliance for SYS.2 and SYS.3 modules across multiple audits.
+  - Recognized for cross-team leadership and high-speed requirement deliveries.
+  - Delivered zero-defect requirement packages for major ADAS camera releases.
+- company: Robert Bosch GmbH
+  position: "Technical Lead \u2013 ADAS & Platform Engineering"
+  location: Heilbronn, Germany
+  startDate: Jan 2018
+  endDate: "Apr 2018 / Feb 2019 \u2013 May 2019"
+  technologies:
+  - C
+  - ASCET
+  - DOORS
+  - Jira
+  highlights:
+  - Derived functional requirements considering safety, regulatory, and platform constraints.
+  - Allocated system-level requirements to software and hardware components.
+  - Created CCB documentation with full impact analysis and requirement dependencies.
+  - Led feature clarification meetings with global OEM stakeholders.
+  - Participated in vehicle-level testing, including winter testing in extreme environments.
+  - Developed rapid prototypes for early evaluation of safety features.
+  - Reviewed system architecture and improved requirement clarity across teams.
+  - Performed feasibility analysis for integrating new ADAS functionality.
+  - Supported global teams with requirement harmonization and platform consolidation.
+  - Worked on safety requirement refinement contributing to ASIL decomposition.
+  achievements:
+  - Delivered 3 OEM-aligned safety requirement packages under tight deadlines.
+  - Reduced ambiguity by introducing structured requirement templates adopted globally.
+  - Enabled rapid prototyping during winter testing with record setup times.
+  - Improved quality of SYS documentation, lowering audit issues by 25%.
+  - Recognized for technical depth and clarity in stakeholder communications.
+- company: Robert Bosch Business Solutions Pvt Ltd
+  position: "Technical Lead \u2013 Active Safety (ESC Systems)"
+  location: Bangalore, India
+  startDate: Mar 2016
+  endDate: May 2019
+  technologies:
+  - C
+  - ASCET
+  - CAN
+  - SIL/HIL
+  - Python
+  highlights:
+  - Implemented ESC software components using ASCET and C for high-ASIL systems.
+  - Developed function design aligned with ISO 26262 Part 6 safety requirements.
+  - Performed SIL simulation testing, unit testing, and peer reviews.
+  - "Led preparation and execution of ASPICE SWE.1\u2013SWE.6 assessments."
+  - Coordinated change requests, impact analysis, and integration activities.
+  - Ensured compliance with architectural standards and interface definitions.
+  - Collaborated with system engineers for requirement-to-design alignment.
+  - Conducted issue debugging and validation during vehicle trials.
+  - Created test documentation and ensured 100% coverage for assigned modules.
+  - Developed reusable scripts to automate test result consolidation.
+  achievements:
+  - Achieved 95% first-time-right delivery rate for multiple OEM projects.
+  - Reduced defect leakage by 35% with improved review checklists.
+  - Delivered optimized ASCET models reducing runtime cost by 20%.
+  - Led software safety compliance during ASPICE L3 assessments.
+  - Awarded for excellence in technical leadership and mentorship.
+education:
+- institution: The University of Findlay, Ohio
+  studyType: Master of Science
+  area: "Computer Science \u2013 Applied Security & Analytics"
+  startDate: Aug 2021
+  endDate: Dec 2023
+  gpa: 4.0/4.0
+certifications:
+- "ISTQB \u2013 Foundation Level"
+- ISO 26262 Training
+- ASPICE Foundations
+- Scrum Master Training
+professional_summary: "T\xDCV S\xDCD Certified Functional Safety Engineer with 10+\
+  \ years of automotive experience in steering, braking, and ADAS systems. Proven\
+  \ expertise in FMEA, STPA, FMEDA, FTA, DFA, Safety Plan creation, Safety Case compilation,\
+  \ and SEooC Safety Manual development. Trusted technical safety lead supporting\
+  \ OEM and Tier-1 audits, mentoring cross-functional teams on ISO 26262 and ASPICE\
+  \ compliance."
 core_competencies:
   functional_safety:
-    - ISO 26262 (HARA, Safety Goals, FSR, TSR, STPA/SOTIF, FMEDA, FMEA, FTA, DFA)
-    - DIA, Safety Plan, Safety Case Authoring, Safety Audits & Gap Analyses, Tool Qualification
+  - ISO 26262 (HARA, Safety Goals, FSR, TSR, STPA/SOTIF, FMEDA, FMEA, FTA, DFA)
+  - DIA, Safety Plan, Safety Case Authoring, Safety Audits & Gap Analyses, Tool Qualification
   safety_analysis_and_metrics:
-    - Diagnostic Coverage
-    - SPFM/LFM
-    - PMHF
-    - ASIL Decomposition
+  - Diagnostic Coverage
+  - SPFM/LFM
+  - PMHF
+  - ASIL Decomposition
   engineering_and_processes:
-    - ASPICE
-    - Systems Engineering (V-Model)
-    - Requirements Management (DOORS, Integrity)
-    - HW/SW Integration Safety
+  - ASPICE
+  - Systems Engineering (V-Model)
+  - Requirements Management (DOORS, Integrity)
+  - HW/SW Integration Safety
   tools_and_languages:
-    - Medini Analyze
-    - Python
-    - DXL
-    - CANoe
-    - CANalyzer
-    - Enterprise Architect
-    - Rhapsody
-    - HIL
-    - SIL
-    - DOORS
-    - WindChill
+  - Medini Analyze
+  - Python
+  - DXL
+  - CANoe
+  - CANalyzer
+  - Enterprise Architect
+  - Rhapsody
+  - HIL
+  - SIL
+  - DOORS
+  - WindChill
   standards_and_quality:
-    - ISO 9001
-    - VDA 6.3
-    - ISO 21434 (Cybersecurity)
-    - MISRA
-
+  - ISO 9001
+  - VDA 6.3
+  - ISO 21434 (Cybersecurity)
+  - MISRA
 professional_experience:
-  - company: HL Mando NA
-    location: Novi, MI
-    role: System Safety & Process Engineer – Steering & Braking Systems
-    duration: Aug 2024 – Present
-    responsibilities:
-      - Developed safety plans, technical safety concepts, and safety cases for steering & braking ECUs.
-      - Applied STPA methodology to identify hazards in steering and braking systems, enabling early detection of unsafe interactions.
-      - Collaborated with OEM safety assessors to close 20+ audit findings; authored safety case reports demonstrating SPFM > 98% and PMHF < 10 FIT.
-      - Derived safety constraints and requirements from STPA outcomes and integrated them into HARA and TSC per ISO 26262.
-      - Performed FMEA and FMEDA for critical HW components, improving diagnostic coverage by 15%.
-      - Coordinated FTA & DFA activities to identify dependent failures in redundant HW elements.
-      - Led DIA agreements and coordinated safety audits with OEMs.
-
-  - company: Robert Bosch NA
-    location: Plymouth, MI
-    role: System Engineer – ADAS & Braking Systems
-    duration: Apr 2023 – Aug 2024
-    responsibilities:
-      - Managed ISO 26262 Part 5 & 6 deliverables for radar and braking ECUs.
-      - Integrated HW/SW safety requirements into system architecture with bidirectional traceability.
-      - Supported confirmation reviews and safety assessments ensuring safety case readiness.
-      - Facilitated safety concept reviews and hardware verification planning with suppliers.
-
-  - company: Continental Automotive
-    location: Bangalore, India
-    role: Systems & Requirements Engineer – Braking & ADAS
-    duration: May 2020 – Dec 2021
-    responsibilities:
-      - Delivered FMEDA, HW architecture safety analysis, and fault metrics calculations for braking systems.
-      - Created SEooC Safety Manuals for reuse components, defining safety assumptions and operating limits.
-      - Coordinated with QMS to ensure safety work products met quality review standards.
-
-  - company: Robert Bosch Engineering
-    location: Bangalore, India & Germany
-    role: Systems Engineer / Functional Owner – Chassis Systems
-    duration: Mar 2014 – May 2020
-    responsibilities:
-      - Developed and validated ISO 26262-compliant safety architectures for ESC & ABS systems.
-      - Led FMEA workshops for critical HW/SW functions ensuring ASIL-D compliance.
-      - Managed architecture models and HW/SW interface definitions in safety-critical projects.
-
-education:
-  - degree: M.S. Applied Security and Analytics
-    institution: University of Findlay
-    location: Ohio, USA
-    duration: 2022 – 2024
-  - degree: B.Tech. Aeronautical Engineering
-    institution: Jawaharlal Nehru Technological University
-    duration: 2008 – 2012
-
-certifications:
-  - TÜV SÜD Certified ISO 26262 Functional Safety Engineer
-  - ASPICE Process Expert with Assessment Experience
-  - ISTQB Certified Tester
+- company: HL Mando NA
+  location: Novi, MI
+  role: "System Safety & Process Engineer \u2013 Steering & Braking Systems"
+  duration: "Aug 2024 \u2013 Present"
+  responsibilities:
+  - Developed safety plans, technical safety concepts, and safety cases for steering
+    & braking ECUs.
+  - Applied STPA methodology to identify hazards in steering and braking systems,
+    enabling early detection of unsafe interactions.
+  - Collaborated with OEM safety assessors to close 20+ audit findings; authored safety
+    case reports demonstrating SPFM > 98% and PMHF < 10 FIT.
+  - Derived safety constraints and requirements from STPA outcomes and integrated
+    them into HARA and TSC per ISO 26262.
+  - Performed FMEA and FMEDA for critical HW components, improving diagnostic coverage
+    by 15%.
+  - Coordinated FTA & DFA activities to identify dependent failures in redundant HW
+    elements.
+  - Led DIA agreements and coordinated safety audits with OEMs.
