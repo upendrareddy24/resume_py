@@ -29,12 +29,7 @@
     "zf",
     "aptiv",
     "stellantis",
-    "hyundai-mobis",
-    "apple",
-    "google",
-    "amazon",
-    "meta",
-    "netflix"
+    "hyundai-mobis"
   ],
   "target_roles": [
     "functional safety engineer",
@@ -46,19 +41,6 @@
     "robotics engineer",
     "automotive systems architect",
     "embedded systems engineer",
-    "software engineer",
-    "senior software engineer",
-    "principal software engineer",
-    "staff software engineer",
-    "machine learning engineer",
-    "ml engineer",
-    "mlops engineer",
-    "ai engineer",
-    "data engineer",
-    "backend engineer",
-    "full stack engineer",
-    "cloud engineer",
-    "devops engineer",
     "site reliability engineer",
     "cybersecurity engineer",
     "platform engineer",
@@ -69,76 +51,7 @@
   "selenium_options": {
     "enabled": true,
     "sites": [
-      {
-        "company": "google",
-        "url": "https://www.google.com/about/careers/applications/jobs/results/",
-        "list_selector": "li[class*='lLd3Je'], div[class*='job-card']",
-        "title_selector": "h2, h3, a[href*='/jobs/results/']",
-        "location_selector": "span[class*='r0wTof'], span[class*='location'], div[class*='location']",
-        "link_selector": "a[href*='/jobs/results/']",
-        "source": "selenium:google",
-        "careers_url": "https://www.google.com/about/careers/",
-        "domain_filter": "google.com",
-        "absolute_base": "https://www.google.com",
-        "sleep_seconds": 3,
-        "wait_selector": "li[class*='lLd3Je'], div[class*='job-card']"
-      },
-      {
-        "company": "apple",
-        "url": "https://jobs.apple.com/en-us/search?location=united-states-USA&team=software-and-services-SFTWR+machine-learning-and-ai-MLAI",
-        "list_selector": "tr[id*='job-'], li[class*='job']",
-        "title_selector": "a[id*='job-title'], h3, h4",
-        "location_selector": ".table--advanced-search__location, span[class*='location'], div[class*='location']",
-        "link_selector": "a[href*='/details/']",
-        "source": "selenium:apple",
-        "careers_url": "https://jobs.apple.com/",
-        "domain_filter": "apple.com",
-        "absolute_base": "https://jobs.apple.com",
-        "sleep_seconds": 3,
-        "wait_selector": "tr[id*='job-'], li[class*='job']"
-      },
-      {
-        "company": "amazon",
-        "url": "https://www.amazon.jobs/en/search",
-        "list_selector": "div[class*='job-tile'], li[class*='job-tile']",
-        "title_selector": "h3, a[class*='title']",
-        "location_selector": "span[class*='location'], div[class*='location']",
-        "link_selector": "a[href*='/jobs/']",
-        "source": "selenium:amazon",
-        "careers_url": "https://www.amazon.jobs/",
-        "domain_filter": "amazon.jobs",
-        "absolute_base": "https://www.amazon.jobs",
-        "sleep_seconds": 3,
-        "wait_selector": "div[class*='job-tile'], li[class*='job-tile']"
-      },
-      {
-        "company": "netflix",
-        "url": "https://jobs.netflix.com/search",
-        "list_selector": "div[class*='job-card'], li[class*='job-card']",
-        "title_selector": "h3, a[class*='job-title'], a[class*='title']",
-        "location_selector": "span[class*='job-location'], span[class*='location']",
-        "link_selector": "a[href*='/jobs/']",
-        "source": "selenium:netflix",
-        "careers_url": "https://jobs.netflix.com/",
-        "domain_filter": "netflix.com",
-        "absolute_base": "https://jobs.netflix.com",
-        "sleep_seconds": 3,
-        "wait_selector": "div[class*='job-card'], li[class*='job-card']"
-      },
-      {
-        "company": "adp",
-        "url": "https://jobs.adp.com/search-jobs",
-        "list_selector": "article.job-result, div[class*='job-result'], li[class*='job-result']",
-        "title_selector": "a.job-title, h2, h3, a[href*='/job/']",
-        "location_selector": "span.job-location, div[class*='location'], p[class*='location']",
-        "link_selector": "a.job-title, a[href*='/job/']",
-        "source": "selenium:adp",
-        "careers_url": "https://jobs.adp.com/",
-        "domain_filter": "adp.com",
-        "absolute_base": "https://jobs.adp.com",
-        "sleep_seconds": 3,
-        "wait_selector": "article.job-result, div[class*='job-result'], li[class*='job-result']"
-      },
+     
       {
         "company": "ford",
         "url": "https://jobs.ford.com/en/search-results",
@@ -222,29 +135,6 @@
         "absolute_base": "https://search-careers.gm.com",
         "sleep_seconds": 3,
         "wait_selector": "div[class*='job-listing'], li[class*='job'], article[class*='job']"
-      },
-      {
-        "company": "oracle",
-        "url": "https://careers.oracle.com/jobs/#en/sites/jobsearch",
-        "list_selector": "a[data-ui='requisition-item'], li[data-ui='requisition-item'], div[class*='job'] a[href*='/job/'], tr[data-ui='requisition-item']",
-        "title_selector": "[data-ui='job-title'], span[class*='job-title'], h3, h4, a[href*='/job/'], td[data-ui='job-title']",
-        "location_selector": "[data-ui='job-location'], span[class*='job-location'], [class*='location'], td[data-ui='job-location']",
-        "link_selector": "a[href*='/job/'], a[data-ui='requisition-item']",
-        "source": "selenium:oracle",
-        "careers_url": "https://careers.oracle.com/",
-        "domain_filter": "oracle.com",
-        "absolute_base": "https://careers.oracle.com",
-        "open_roles_text": [
-          "search jobs",
-          "view all jobs"
-        ],
-        "search_patterns": [
-          "open roles",
-          "search jobs",
-          "view jobs"
-        ],
-        "wait_selector": "a[data-ui='requisition-item'], li[data-ui='requisition-item'], tr[data-ui='requisition-item']",
-        "sleep_seconds": 3
       },
       {
         "company": "tesla",
@@ -343,20 +233,6 @@
         "absolute_base": "https://nvidia.wd5.myworkdayjobs.com",
         "sleep_seconds": 3,
         "wait_selector": "li[data-automation-id='jobPosting'], div[class*='Posting']"
-      },
-      {
-        "company": "meta",
-        "url": "https://www.metacareers.com/jobs",
-        "list_selector": "a[href*='jobs'], div[class*='job-card']",
-        "title_selector": "h3, h4, a",
-        "location_selector": "span[class*='location'], div[class*='location']",
-        "link_selector": "a[href*='/jobs/']",
-        "source": "selenium:meta",
-        "careers_url": "https://metacareers.com",
-        "domain_filter": "metacareers.com",
-        "absolute_base": "https://www.metacareers.com",
-        "sleep_seconds": 3,
-        "wait_selector": "a[href*='jobs'], div[class*='job-card']"
       }
     ],
     "extra_sites": []
