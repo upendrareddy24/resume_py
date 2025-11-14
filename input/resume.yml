@@ -79,6 +79,24 @@ skills:
   - Traceability Management
   - System Design
 work:
+- company: HL Mando NA
+  location: Novi, MI
+  role: "System Safety & Process Engineer \u2013 Steering & Braking Systems"
+  duration: "Aug 2024 \u2013 Present"
+  responsibilities:
+  - Developed safety plans, technical safety concepts, and safety cases for steering
+    & braking ECUs.
+  - Applied STPA methodology to identify hazards in steering and braking systems,
+    enabling early detection of unsafe interactions.
+  - Collaborated with OEM safety assessors to close 20+ audit findings; authored safety
+    case reports demonstrating SPFM > 98% and PMHF < 10 FIT.
+  - Derived safety constraints and requirements from STPA outcomes and integrated
+    them into HARA and TSC per ISO 26262.
+  - Performed FMEA and FMEDA for critical HW components, improving diagnostic coverage
+    by 15%.
+  - Coordinated FTA & DFA activities to identify dependent failures in redundant HW
+    elements.
+  - Led DIA agreements and coordinated safety audits with OEMs.
 - company: Continental Automotive India Private Limited
   position: "Software Requirements Manager \u2013 ADAS / Steering / Braking"
   location: Bangalore, India
@@ -217,22 +235,4 @@ core_competencies:
   - VDA 6.3
   - ISO 21434 (Cybersecurity)
   - MISRA
-professional_experience:
-- company: HL Mando NA
-  location: Novi, MI
-  role: "System Safety & Process Engineer \u2013 Steering & Braking Systems"
-  duration: "Aug 2024 \u2013 Present"
-  responsibilities:
-  - Developed safety plans, technical safety concepts, and safety cases for steering
-    & braking ECUs.
-  - Applied STPA methodology to identify hazards in steering and braking systems,
-    enabling early detection of unsafe interactions.
-  - Collaborated with OEM safety assessors to close 20+ audit findings; authored safety
-    case reports demonstrating SPFM > 98% and PMHF < 10 FIT.
-  - Derived safety constraints and requirements from STPA outcomes and integrated
-    them into HARA and TSC per ISO 26262.
-  - Performed FMEA and FMEDA for critical HW components, improving diagnostic coverage
-    by 15%.
-  - Coordinated FTA & DFA activities to identify dependent failures in redundant HW
-    elements.
-  - Led DIA agreements and coordinated safety audits with OEMs.
+
