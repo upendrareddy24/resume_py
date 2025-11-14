@@ -144,14 +144,6 @@ Job Description: {job_description}
 7. **KEY ACHIEVEMENTS Section:**
    Section header: "KEY ACHIEVEMENTS"
    Format with bullet points (extract from work experience):
-   ```
-   • Reduced manual validation and testing efforts by 70% through automation using Jenkins, Docker, and Azure
-   • Improved workflow efficiency by automating PR creation and dependency management with Azure Pipelines
-   • Created AUTOSIM prototype supporting multiple integrations, reducing manual effort by 70%
-   • Migrated object detection from 2D to 3D box mapping, improving system accuracy
-   • Enhanced deployment reliability by automating installation processes across virtual and real nodes
-   • Designed innovative tools that reduced release times and improved deployment workflows by 60%
-   ```
    - Extract 5-8 most impressive achievements from work experience
    - Each achievement must have quantifiable impact (%, time saved, cost reduction)
    - Focus on achievements relevant to the target job
