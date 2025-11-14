@@ -151,9 +151,6 @@ Job Description: {job_description}
 8. **PUBLICATIONS Section:**
    Section header: "PUBLICATIONS"
    Format with bullet points:
-   ```
-   • Bhavana Nare, et al., "Computational Trust Framework for Human-Robot Teams," IEEE Xplore, Document 11127674, 2024. Available at https://ieeexplore.ieee.org/document/11127674
-   ```
    - Include all publications with full citations
    - Add URLs if available
 
