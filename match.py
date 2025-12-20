@@ -23,7 +23,42 @@ if load_dotenv:
     load_dotenv()
 
 import requests
-from rapidfuzz import fuzz
+try:
+    # Prefer rapidfuzz if available (much faster + better token-set scoring).
+    from rapidfuzz import fuzz  # type: ignore
+except Exception:
+    # Pure-Python fallback so the script can run without pip installs.
+    # We emulate fuzz.token_set_ratio using normalized token overlap + SequenceMatcher.
+    import difflib
+
+    class _FuzzFallback:
+        @staticmethod
+        def token_set_ratio(a: str, b: str) -> float:
+            def _tok(s: str) -> set[str]:
+                return {t for t in (s or "").lower().split() if t}
+
+            a_set = _tok(a)
+            b_set = _tok(b)
+            if not a_set and not b_set:
+                return 100.0
+            if not a_set or not b_set:
+                return 0.0
+
+            inter = sorted(a_set & b_set)
+            a_only = sorted(a_set - b_set)
+            b_only = sorted(b_set - a_set)
+
+            # Similar to the canonical approach: compare intersections and unions as strings.
+            s1 = " ".join(inter)
+            s2 = " ".join(inter + a_only)
+            s3 = " ".join(inter + b_only)
+
+            def _ratio(x: str, y: str) -> float:
+                return difflib.SequenceMatcher(None, x, y).ratio() * 100.0
+
+            return max(_ratio(s1, s2), _ratio(s1, s3), _ratio(s2, s3))
+
+    fuzz = _FuzzFallback()
 try:
     # centralize config helpers
     from config import load_json, resolve_from_config  # type: ignore
@@ -679,6 +714,260 @@ def check_sponsorship_available(jd_text: str, check_enabled: bool = False) -> bo
     return True  # Sponsorship likely available
 
 
+def keyword_matches_job(job: dict[str, Any], target_roles: list[str], resume_skills: set[str]) -> bool:
+    """
+    Check if job title/description matches target roles or resume skills.
+    
+    Args:
+        job: Job dictionary with title, description
+        target_roles: List of target role names (e.g., ["software engineer", "ml engineer"])
+        resume_skills: Set of skills from resume (e.g., {"python", "tensorflow", "kubernetes"})
+    
+    Returns:
+        True if job matches keywords
+    """
+    title_lower = (job.get("title") or "").lower()
+    desc_lower = (job.get("description") or "").lower()
+    company_lower = (job.get("company") or "").lower()
+    
+    # Check if title matches any target role
+    for role in target_roles:
+        role_lower = role.lower()
+        if role_lower in title_lower:
+            return True
+    
+    # Check if key skills appear in title or short description
+    if resume_skills:
+        # Look for skills in title (highest weight)
+        title_words = set(title_lower.split())
+        if len(title_words & resume_skills) >= 1:  # At least 1 skill match in title
+            return True
+        
+        # Look for skills in description if available
+        if desc_lower:
+            desc_words = set(desc_lower.split())
+            if len(desc_words & resume_skills) >= 2:  # At least 2 skills match in description
+                return True
+    
+    return False
+
+
+def fetch_job_description_from_url(url: str, timeout: int = 15, max_retries: int = 2) -> str:
+    """
+    Fetch full job description from a job URL with timeout and retry logic.
+    Skips expired/filled jobs.
+    
+    Args:
+        url: Job posting URL
+        timeout: Request timeout in seconds (reduced for faster failure)
+        max_retries: Number of retry attempts on failure
+    
+    Returns:
+        Extracted job description text, or empty string if job is expired/error
+    """
+    import time
+    
+    for attempt in range(max_retries):
+        try:
+            import requests
+            from bs4 import BeautifulSoup
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Connection': 'keep-alive',
+            }
+            
+            response = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Check for visa/citizenship restrictions FIRST (higher priority)
+            page_text_lower = response.text.lower()
+            
+            visa_restrictions = [
+                'visa sponsorship is not available',
+                'visa / work permit sponsorship is not available',
+                'work permit sponsorship is not available',
+                'no visa sponsorship',
+                'does not sponsor visas',
+                'will not sponsor work authorization',
+                'must be authorized to work',
+                'must be legally authorized to work',
+                'us citizenship required',
+                'u.s. citizenship required',
+                'must be a us citizen',
+                'must be a u.s. citizen',
+                'citizenship is required',
+                'active security clearance required',
+                'must possess an active security clearance',
+                'must possess and maintain an active',
+                'requires us citizenship'
+            ]
+            
+            for restriction in visa_restrictions:
+                if restriction in page_text_lower:
+                    print(f"  [fetch-skipped] Visa/citizenship restriction: {url[:60]}")
+                    return ""  # Return empty to skip this job
+            
+            # Check for expired/filled job indicators
+            expired_indicators = [
+                'job has been filled',
+                'job you are trying to apply for has been filled',
+                'position has been filled',
+                'no longer accepting applications',
+                'job posting has expired',
+                'this job is no longer available',
+                'position is no longer available',
+                'application deadline has passed',
+                'job has closed',
+                'posting has closed',
+                'job not found',  # Google specific
+                'this job may have been taken down',  # Google specific
+                'job may have been removed',
+                'position has been removed'
+            ]
+            
+            for indicator in expired_indicators:
+                if indicator in page_text_lower:
+                    print(f"  [fetch-expired] Job filled/expired: {url[:60]}")
+                    return ""  # Return empty to skip this job
+            
+            # Remove unwanted elements
+            for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe']):
+                tag.decompose()
+            
+            # Extract text
+            text = soup.get_text(separator=' ', strip=True)
+            # Clean up whitespace
+            text = re.sub(r'\s+', ' ', text)
+            
+            # Limit length
+            if len(text) > 10000:
+                text = text[:10000]
+            
+            return text
+        
+        except requests.Timeout:
+            if attempt < max_retries - 1:
+                print(f"  [fetch-timeout] Retry {attempt + 1}/{max_retries} for {url[:60]}...")
+                time.sleep(1)  # Brief pause before retry
+                continue
+            else:
+                print(f"  [fetch-timeout] Timeout after {max_retries} attempts: {url[:60]}")
+                return ""
+        
+        except requests.RequestException as e:
+            if attempt < max_retries - 1:
+                print(f"  [fetch-error] Retry {attempt + 1}/{max_retries}: {str(e)[:50]}")
+                time.sleep(1)
+                continue
+            else:
+                print(f"  [fetch-error] Failed after {max_retries} attempts: {url[:60]} - {str(e)[:50]}")
+                return ""
+        
+        except Exception as e:
+            print(f"  [fetch-error] Unexpected error for {url[:60]}: {str(e)[:50]}")
+            return ""
+    
+    return ""
+
+
+def enrich_jobs_with_descriptions(
+    jobs: list[dict[str, Any]], 
+    target_roles: list[str],
+    resume_skills: set[str],
+    max_workers: int = 5
+) -> list[dict[str, Any]]:
+    """
+    Enrich jobs with full descriptions by:
+    1. Filtering jobs that match keywords (title/skills)
+    2. Fetching full description from job URL
+    3. Returning enriched jobs
+    
+    Args:
+        jobs: List of job dictionaries
+        target_roles: Target role keywords
+        resume_skills: Skills extracted from resume
+        max_workers: Number of parallel workers
+    
+    Returns:
+        List of jobs with descriptions
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # Step 1: Filter jobs that match keywords
+    print(f"\n[keyword-match] Checking {len(jobs)} jobs for keyword matches...")
+    matching_jobs = []
+    
+    for job in jobs:
+        if keyword_matches_job(job, target_roles, resume_skills):
+            matching_jobs.append(job)
+            title = job.get("title", "")[:50]
+            company = job.get("company", "")
+            print(f"  ✅ Match: {company} - {title}")
+    
+    print(f"[keyword-match] Found {len(matching_jobs)} jobs matching keywords")
+    
+    if not matching_jobs:
+        print("[keyword-match] No matching jobs found")
+        return jobs
+    
+    # Step 2: Fetch descriptions for matching jobs
+    print(f"\n[fetch-desc] Fetching descriptions for {len(matching_jobs)} jobs (parallel workers: {max_workers})...")
+    
+    def fetch_one(job: dict[str, Any]) -> dict[str, Any]:
+        url = job.get("url", "").strip()
+        if not url or len(job.get("description", "")) > 500:
+            # Already has description
+            return job
+        
+        company = job.get("company", "")[:20]
+        title = job.get("title", "")[:40]
+        print(f"  [fetching] {company} - {title}")
+        
+        description = fetch_job_description_from_url(url)
+        if description and len(description) > 200:
+            job["description"] = description
+            print(f"  ✅ Fetched {len(description)} chars for {company}")
+        else:
+            print(f"  ⚠️  Failed or short description for {company}")
+        
+        return job
+    
+    enriched = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(fetch_one, job): job for job in matching_jobs}
+        
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                enriched.append(result)
+            except Exception as e:
+                job = futures[future]
+                print(f"  ❌ Error processing {job.get('company')}: {e}")
+                enriched.append(job)
+    
+    # Step 3: Filter out expired/failed jobs (empty descriptions) and merge
+    enriched_valid = [job for job in enriched if job.get("description") and len(job.get("description", "")) > 100]
+    enriched_expired = len(enriched) - len(enriched_valid)
+    
+    if enriched_expired > 0:
+        print(f"[fetch-desc] Filtered out {enriched_expired} expired/invalid jobs")
+    
+    enriched_urls = {job["url"] for job in enriched_valid if job.get("url")}
+    final_jobs = enriched_valid.copy()
+    
+    for job in jobs:
+        if job.get("url") not in enriched_urls:
+            final_jobs.append(job)
+    
+    print(f"[fetch-desc] Completed. {len(enriched_valid)} valid jobs enriched with descriptions\n")
+    return final_jobs
+
+
 def score_job(job: dict[str, Any], resume_text: str) -> float:
     title = job.get("title", "")
     fields = "\n".join([
@@ -934,7 +1223,18 @@ def main() -> None:
         except Exception:
             pass
         if raw_sites:
-            selenium_jobs = fetch_selenium_sites(raw_sites, int(resolved_cfg.get("fetch_limit", 200)))
+            # Use parallel Selenium fetching for better performance
+            from selenium_scraper import fetch_selenium_sites_parallel
+            
+            selenium_workers = min(3, len(raw_sites))  # Max 3 parallel drivers to avoid resource issues
+            print(f"[selenium] Using parallel fetching with {selenium_workers} workers...")
+            
+            selenium_jobs = fetch_selenium_sites_parallel(
+                raw_sites, 
+                int(resolved_cfg.get("fetch_limit", 200)),
+                max_workers=selenium_workers
+            )
+            
             # Debug: Log URL availability from Selenium
             selenium_with_urls = sum(1 for j in selenium_jobs if j.get("url"))
             selenium_without_urls = len(selenium_jobs) - selenium_with_urls
@@ -950,16 +1250,84 @@ def main() -> None:
     if country:
         fetched = [j for j in fetched if _matches_country(j.get("location"), country)]
 
+    # Enrich jobs with full descriptions based on keyword matching
+    target_roles = resolved_cfg.get("target_roles", [])
+    # Extract skills from resume for keyword matching
+    resume_skills = set()
+    resume_lower = resume_text.lower()
+    common_skills = {
+        "python", "java", "javascript", "typescript", "c++", "go", "rust", "scala",
+        "react", "angular", "vue", "node", "django", "flask", "spring",
+        "tensorflow", "pytorch", "keras", "scikit-learn", "pandas", "numpy",
+        "aws", "azure", "gcp", "kubernetes", "docker", "terraform",
+        "sql", "postgresql", "mysql", "mongodb", "redis", "elasticsearch",
+        "kafka", "spark", "airflow", "mlflow", "kubeflow",
+        "machine learning", "deep learning", "nlp", "computer vision", "mlops"
+    }
+    for skill in common_skills:
+        if skill in resume_lower:
+            resume_skills.add(skill)
+    
+    print(f"\n[keyword-match] Resume skills detected: {sorted(list(resume_skills)[:20])}")
+    print(f"[keyword-match] Target roles: {target_roles[:10]}")
+    
+    # Enrich matching jobs with descriptions
+    if target_roles or resume_skills:
+        fetched = enrich_jobs_with_descriptions(
+            fetched, 
+            target_roles, 
+            resume_skills,
+            max_workers=resolved_cfg.get("parallel_workers", 5)
+        )
+    
     # Score and select
-    scored = []
-    for job in fetched:
-        # Debug: Log URL before scoring
+    print(f"\n[score] Scoring {len(fetched)} jobs with parallel workers...")
+    
+    from concurrent.futures import ThreadPoolExecutor as Executor, as_completed
+
+    # If nothing was fetched, write empty outputs and exit cleanly.
+    if not fetched:
+        out_file = Path(out_path)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_file, "w", encoding="utf-8") as f:
+            json.dump([], f, indent=2)
+        csv_path = out_file.with_suffix(".csv")
+        write_csv([], csv_path)
+        print(f"[score] No jobs fetched. Wrote empty outputs: {out_file} and {csv_path}")
+        return
+    
+    def score_single_job(job: dict[str, Any]) -> dict[str, Any]:
+        """Score a single job and return with score and country"""
         if not job.get("url"):
             print(f"[score-debug] Job without URL: {job.get('company', 'N/A')} - {job.get('title', 'N/A')[:50]} (source: {job.get('source', 'N/A')})")
         s = score_job(job, resume_text)
         # derive country value for CSV
         cval = "usa" if _matches_country(job.get("location"), "usa") else ""
-        scored.append({**job, "score": round(s, 2), "country": cval})
+        return {**job, "score": round(s, 2), "country": cval}
+    
+    # Parallel scoring
+    scored = []
+    max_score_workers = min(int(resolved_cfg.get("parallel_workers", 5) or 5), len(fetched))
+    if max_score_workers < 1:
+        max_score_workers = 1
+    
+    with Executor(max_workers=max_score_workers) as executor:
+        future_to_job = {executor.submit(score_single_job, job): job for job in fetched}
+        
+        for idx, future in enumerate(as_completed(future_to_job), 1):
+            try:
+                result = future.result()
+                scored.append(result)
+                if idx % 10 == 0:  # Progress update every 10 jobs
+                    print(f"  [score] Progress: {idx}/{len(fetched)} jobs scored")
+            except Exception as e:
+                job = future_to_job[future]
+                print(f"  [score-error] Failed to score {job.get('company')}: {e}")
+                # Add job with score 0 to not lose it
+                scored.append({**job, "score": 0.0, "country": ""})
+    
+    print(f"[score] Completed scoring {len(scored)} jobs")
+    
     scored.sort(key=lambda x: x["score"], reverse=True)
     top = scored[: top_n]
     
@@ -1118,12 +1486,13 @@ def main() -> None:
             if top_per_company_limit < 1:
                 top_per_company_limit = 1
             
-            print(f"[filter] Starting with {len(top[:100])} jobs")
+            top_window = top[:top_n]
+            print(f"[filter] Starting with {len(top_window)} jobs")
             print(f"[filter] Filtering jobs with score >= {score_threshold}")
             
             # Debug: Log URL availability before filtering
-            jobs_with_urls = sum(1 for j in top[:100] if j.get("url"))
-            jobs_without_urls = len(top[:100]) - jobs_with_urls
+            jobs_with_urls = sum(1 for j in top_window if j.get("url"))
+            jobs_without_urls = len(top_window) - jobs_with_urls
             print(f"[filter-debug] Before filtering: {jobs_with_urls} jobs with URLs, {jobs_without_urls} without URLs")
             
             if target_locations:
@@ -1132,8 +1501,8 @@ def main() -> None:
                 print(f"[filter] Top per company mode: Will select only highest scoring job from each company")
             
             # Filter by score
-            filtered_jobs = [j for j in top[:100] if j.get("score", 0) >= score_threshold]
-            print(f"[filter] After score filter: {len(filtered_jobs)} jobs (removed {len(top[:100]) - len(filtered_jobs)})")
+            filtered_jobs = [j for j in top_window if j.get("score", 0) >= score_threshold]
+            print(f"[filter] After score filter: {len(filtered_jobs)} jobs (removed {len(top_window) - len(filtered_jobs)})")
             
             # Debug: Log URL availability after score filter
             filtered_with_urls = sum(1 for j in filtered_jobs if j.get("url"))
@@ -1142,7 +1511,7 @@ def main() -> None:
             
             # Debug: Show score distribution and sample
             print(f"\n[filter-debug] SCORE DISTRIBUTION:")
-            all_scores = [j.get("score", 0) for j in top[:100]]
+            all_scores = [j.get("score", 0) for j in top_window]
             if all_scores:
                 avg_score = sum(all_scores) / len(all_scores)
                 max_score = max(all_scores)
@@ -1151,7 +1520,7 @@ def main() -> None:
                 print(f"  - Max score: {max_score:.2f}")
                 print(f"  - Min score: {min_score:.2f}")
                 print(f"  - Score threshold: {score_threshold}")
-                print(f"  - Jobs above threshold: {len(filtered_jobs)}/{len(top[:100])}")
+                print(f"  - Jobs above threshold: {len(filtered_jobs)}/{len(top_window)}")
             
             if filtered_jobs:
                 print(f"\n[filter] ✅ Sample jobs after score filter:")
@@ -1185,7 +1554,7 @@ def main() -> None:
                 return company_key
 
             best_jobs_by_company: dict[str, list[dict[str, Any]]] = {}
-            for job in top[:100]:
+            for job in top_window:
                 company_key = _job_company_key(job)
                 if not company_key:
                     continue
@@ -2267,7 +2636,15 @@ def main() -> None:
                                                 continue
                                             key = _asset_key(job)
                                             assets = job_assets.get(job_url) or job_assets.get(key) or {}
-                                            resume_path = assets.get("resume") or resume_default
+                                            
+                                            # Prefer PDF resume if available
+                                            resume_path = None
+                                            pdf_path_str = assets.get("resume_pdf")
+                                            if pdf_path_str and Path(pdf_path_str).exists():
+                                                resume_path = pdf_path_str
+                                            else:
+                                                resume_path = assets.get("resume") or resume_default
+                                            
                                             cover_path = assets.get("cover_letter") or cover_default
                                             if resume_path:
                                                 resume_path = str(Path(resume_path).expanduser())
@@ -2296,7 +2673,15 @@ def main() -> None:
                                                 continue
                                             key = _asset_key(job)
                                             assets = job_assets.get(job_url) or job_assets.get(key) or {}
-                                            resume_path = assets.get("resume") or resume_default
+                                            
+                                            # Prefer PDF resume if available
+                                            resume_path = None
+                                            pdf_path_str = assets.get("resume_pdf")
+                                            if pdf_path_str and Path(pdf_path_str).exists():
+                                                resume_path = pdf_path_str
+                                            else:
+                                                resume_path = assets.get("resume") or resume_default
+                                                
                                             cover_path = assets.get("cover_letter") or cover_default
                                             if resume_path:
                                                 resume_path = str(Path(resume_path).expanduser())

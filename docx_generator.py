@@ -179,24 +179,38 @@ class WordDocumentGenerator:
                 name_run.font.color.rgb = RGBColor(0, 0, 0)
             
             contact_details = _extract_contact_details(content, sections_dict)
-            # Single centered line: Email | Phone | GitHub | LinkedIn (only present values, in this order)
-            contact_line_parts = []
+            # Display contact info on separate centered lines
             if contact_details.get("email"):
-                contact_line_parts.append(contact_details["email"])
+                email_para = doc.add_paragraph(contact_details["email"])
+                email_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                email_para.paragraph_format.space_after = Pt(3)
+                if email_para.runs:
+                    email_para.runs[0].font.size = Pt(10)
+                    email_para.runs[0].font.color.rgb = RGBColor(80, 80, 80)
+            
             if contact_details.get("phone"):
-                contact_line_parts.append(contact_details["phone"])
+                phone_para = doc.add_paragraph(contact_details["phone"])
+                phone_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                phone_para.paragraph_format.space_after = Pt(3)
+                if phone_para.runs:
+                    phone_para.runs[0].font.size = Pt(10)
+                    phone_para.runs[0].font.color.rgb = RGBColor(80, 80, 80)
+            
             if contact_details.get("github"):
-                contact_line_parts.append(contact_details["github"])
+                github_para = doc.add_paragraph(contact_details["github"])
+                github_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                github_para.paragraph_format.space_after = Pt(3)
+                if github_para.runs:
+                    github_para.runs[0].font.size = Pt(10)
+                    github_para.runs[0].font.color.rgb = RGBColor(80, 80, 80)
+            
             if contact_details.get("linkedin"):
-                contact_line_parts.append(contact_details["linkedin"])
-            if contact_line_parts:
-                contact_para = doc.add_paragraph(" | ".join(contact_line_parts))
-                contact_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                contact_para.paragraph_format.space_after = Pt(6)
-                if contact_para.runs:
-                    run = contact_para.runs[0]
-                    run.font.size = Pt(10)
-                    run.font.color.rgb = RGBColor(80, 80, 80)
+                linkedin_para = doc.add_paragraph(contact_details["linkedin"])
+                linkedin_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                linkedin_para.paragraph_format.space_after = Pt(6)
+                if linkedin_para.runs:
+                    linkedin_para.runs[0].font.size = Pt(10)
+                    linkedin_para.runs[0].font.color.rgb = RGBColor(80, 80, 80)
 
             if contact_line_parts:
                 doc.add_paragraph()
@@ -580,6 +594,88 @@ class WordDocumentGenerator:
             sections[current_section] = '\n'.join(current_content).strip()
         
         return sections
+
+    def generate_cover_letter_docx(
+        self,
+        content: str,
+        output_path: str,
+        job_title: str = "",
+        company_name: str = "",
+        candidate_name: str = "",
+        candidate_email: str = "",
+        candidate_phone: str = ""
+    ) -> bool:
+        """
+        Generate a simple, professional 1-page cover letter DOCX.
+        This is intentionally much simpler than the resume generator.
+        """
+        try:
+            # Ensure output directory exists
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+            doc = Document()
+
+            # Set basic margins
+            for section in doc.sections:
+                section.top_margin = Inches(1)
+                section.bottom_margin = Inches(1)
+                section.left_margin = Inches(1)
+                section.right_margin = Inches(1)
+
+            # Header: candidate name
+            if candidate_name:
+                name_para = doc.add_paragraph(candidate_name)
+                name_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                name_run = name_para.runs[0]
+                name_run.font.size = Pt(14)
+                name_run.font.bold = True
+
+            # Contact info
+            if candidate_email or candidate_phone:
+                contact_parts = []
+                if candidate_email:
+                    contact_parts.append(candidate_email)
+                if candidate_phone:
+                    contact_parts.append(candidate_phone)
+                contact_para = doc.add_paragraph(" | ".join(contact_parts))
+                contact_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                if contact_para.runs:
+                    contact_para.runs[0].font.size = Pt(10)
+
+            # Add a blank line
+            doc.add_paragraph()
+
+            # Date (optional)
+            # We could add today's date here if needed
+
+            # Company + role line (optional)
+            if company_name or job_title:
+                target_line = ""
+                if company_name and job_title:
+                    target_line = f"{company_name} – {job_title}"
+                elif company_name:
+                    target_line = company_name
+                elif job_title:
+                    target_line = job_title
+                tgt_para = doc.add_paragraph(target_line)
+                tgt_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                if tgt_para.runs:
+                    tgt_para.runs[0].font.size = Pt(11)
+
+                doc.add_paragraph()
+
+            # Main body content (from LLM or fallback template)
+            if content:
+                for line in content.split("\n"):
+                    doc.add_paragraph(line)
+
+            # Save document
+            doc.save(output_path)
+            print(f"[docx] ✅ Cover letter DOCX generated: {output_path}")
+            return True
+        except Exception as e:
+            print(f"[docx] ❌ Error generating cover letter DOCX: {e}")
+            return False
     
     def _parse_experiences(self, text: str) -> list:
         """Parse work experience into structured format - uses LLM when available"""

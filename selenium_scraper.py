@@ -12,10 +12,17 @@ try:
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
-    from webdriver_manager.chrome import ChromeDriverManager
     SELENIUM_AVAILABLE = True
 except Exception:
     SELENIUM_AVAILABLE = False
+
+# webdriver-manager is optional; Selenium 4.6+ can use Selenium Manager automatically.
+try:
+    from webdriver_manager.chrome import ChromeDriverManager  # type: ignore
+    _WDM_AVAILABLE = True
+except Exception:
+    ChromeDriverManager = None  # type: ignore
+    _WDM_AVAILABLE = False
 
 try:
     from llm_job_list_extractor import LLMJobListExtractor
@@ -28,6 +35,21 @@ except Exception:
 def create_chrome_driver(headless: bool = True, window_size: str = "1920,1080") -> Any:
     if not SELENIUM_AVAILABLE:
         return None
+    # Ensure webdriver-manager cache stays inside the repo/workspace (avoids permission issues on macOS/Homebrew Python).
+    try:
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        wdm_dir = os.path.join(repo_root, ".wdm")
+        se_cache_dir = os.path.join(repo_root, ".selenium-cache")
+        os.makedirs(wdm_dir, exist_ok=True)
+        os.makedirs(se_cache_dir, exist_ok=True)
+        os.environ.setdefault("WDM_CACHE_DIR", wdm_dir)
+        os.environ.setdefault("WDM_LOCAL", "1")
+        # Selenium Manager cache location (avoids trying to write to ~/.cache/selenium)
+        os.environ.setdefault("SE_CACHE_PATH", se_cache_dir)
+        # Some environments respect XDG cache home
+        os.environ.setdefault("XDG_CACHE_HOME", se_cache_dir)
+    except Exception:
+        pass
     chrome_options = ChromeOptions()
     if headless:
         chrome_options.add_argument("--headless=new")
@@ -37,8 +59,13 @@ def create_chrome_driver(headless: bool = True, window_size: str = "1920,1080") 
     if window_size:
         chrome_options.add_argument(f"--window-size={window_size}")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36")
-    service = ChromeService(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    # Prefer webdriver-manager if installed; otherwise rely on Selenium Manager (Selenium 4.6+).
+    if _WDM_AVAILABLE and ChromeDriverManager is not None:
+        service = ChromeService(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+    else:
+        # Selenium Manager will resolve the driver automatically when no Service is provided.
+        driver = webdriver.Chrome(options=chrome_options)
     driver.implicitly_wait(5)
     return driver
 
@@ -394,13 +421,15 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                         try:
                             # Look for job ID in various attributes
                             job_id = None
-                            for attr in ['id', 'data-id', 'data-job-id', 'data-jobid', 'aria-label']:
+                            for attr in ['id', 'data-id', 'data-job-id', 'data-jobid', 'aria-label', 'data-job-requisition-id']:
                                 val = elem.get_attribute(attr) or ""
-                                # Extract numeric ID
+                                # Extract job ID (keep as string to avoid number truncation)
                                 import re
-                                id_match = re.search(r'\d+', val)
+                                # Match full alphanumeric ID (not just first digits)
+                                id_match = re.search(r'(\d{10,}[-\w]*)', val)  # Match 10+ digits, optionally followed by hyphens/words
                                 if id_match:
-                                    job_id = id_match.group(0)
+                                    job_id = id_match.group(1)  # Keep full ID as string
+                                    print(f"  [selenium-debug] Extracted job ID: {job_id}")
                                     break
                             
                             if job_id:
@@ -410,13 +439,14 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
                                     f"{absolute_base}/job/{job_id}",
                                     f"{absolute_base}/careers/{job_id}",
                                     f"{absolute_base}/en-us/jobs/{job_id}",
+                                    f"{absolute_base}/about/careers/applications/jobs/results/{job_id}",  # Google specific
                                 ]
                                 for pattern in base_patterns:
                                     link = pattern
-                                    print(f"  [selenium-debug] Method 6 (constructed from ID {job_id}) found: {link[:80]}")
+                                    print(f"  [selenium-debug] Method 6 (constructed from ID {job_id}) found: {link[:120]}")  # Show more chars
                                     break
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print(f"  [selenium-debug] Method 6 failed: {e}")
                     
                     # Normalize relative links
                     if link and absolute_base and link.startswith('/'):
@@ -541,5 +571,86 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
             driver.quit()
         except Exception:
             pass
+    return results
+
+
+def fetch_selenium_site_parallel(site: dict[str, Any], fetch_limit: int) -> list[dict[str, Any]]:
+    """
+    Fetch jobs from a single Selenium site (for parallel processing).
+    
+    Args:
+        site: Site configuration dictionary
+        fetch_limit: Maximum number of jobs to fetch
+    
+    Returns:
+        List of job dictionaries
+    """
+    if not SELENIUM_AVAILABLE:
+        return []
+    
+    driver = create_headless_driver()
+    if driver is None:
+        return []
+    
+    results: list[dict[str, Any]] = []
+    
+    try:
+        # Use the existing fetch_selenium_sites logic for a single site
+        temp_results = fetch_selenium_sites([site], fetch_limit)
+        results.extend(temp_results)
+    except Exception as e:
+        print(f"[selenium-parallel] Error fetching {site.get('company', 'unknown')}: {str(e)[:100]}")
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+    
+    return results
+
+
+def fetch_selenium_sites_parallel(sites: list[Any], fetch_limit: int, max_workers: int = 3) -> list[dict[str, Any]]:
+    """
+    Fetch jobs from multiple Selenium sites in parallel.
+    
+    Args:
+        sites: List of site configurations
+        fetch_limit: Maximum number of jobs to fetch per site
+        max_workers: Number of parallel Selenium drivers (default: 3, don't use too many)
+    
+    Returns:
+        Combined list of job dictionaries from all sites
+    """
+    if not SELENIUM_AVAILABLE:
+        return []
+    
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    print(f"\n[selenium-parallel] Fetching from {len(sites)} sites with {max_workers} parallel workers...")
+    
+    results: list[dict[str, Any]] = []
+    per_site_limit = max(1, fetch_limit // max(1, len(sites)))
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all sites for parallel fetching
+        future_to_site = {
+            executor.submit(fetch_selenium_site_parallel, site, per_site_limit): site 
+            for site in sites
+        }
+        
+        # Collect results as they complete
+        for idx, future in enumerate(as_completed(future_to_site), 1):
+            site = future_to_site[future]
+            company = site.get('company', 'unknown')
+            
+            try:
+                site_jobs = future.result()
+                results.extend(site_jobs)
+                print(f"  [selenium-parallel] {idx}/{len(sites)} - {company}: ✅ {len(site_jobs)} jobs")
+            except Exception as e:
+                print(f"  [selenium-parallel] {idx}/{len(sites)} - {company}: ❌ {str(e)[:50]}")
+    
+    print(f"[selenium-parallel] Completed: {len(results)} total jobs from {len(sites)} sites\n")
+    
     return results
 

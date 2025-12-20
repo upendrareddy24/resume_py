@@ -14,6 +14,7 @@ This agent orchestrates all components and can run continuously or on-demand.
 import os
 import json
 import time
+import csv
 from typing import Any, Dict, List, Optional, Callable
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +31,11 @@ from resume_utils import load_resume_data
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] [%(name)s] %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler("execution.log", mode='w'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger("JobAgent")
 
@@ -501,12 +506,109 @@ class JobApplicationAgent:
             with open(cover_path, "w", encoding="utf-8") as f:
                 f.write(application.cover_letter)
         
+        # Save combined TXT (metadata + resume + cover letter)
+        combined_lines = []
+        combined_lines.append(f"Company: {application.company}")
+        combined_lines.append(f"Title: {application.title}")
+        combined_lines.append(f"Location: {application.location}")
+        combined_lines.append(f"URL: {application.url}")
+        combined_lines.append(f"Score: {application.score:.1f}")
+        combined_lines.append(f"Generated At: {application.generated_at or ''}")
+        combined_lines.append("")
+        if application.tailored_resume:
+            combined_lines.append("===== Tailored Resume =====")
+            combined_lines.append(application.tailored_resume)
+            combined_lines.append("")
+        if application.cover_letter:
+            combined_lines.append("===== Cover Letter =====")
+            combined_lines.append(application.cover_letter)
+            combined_lines.append("")
+        combined_text = "\n".join(combined_lines).strip() + "\n"
+        combined_path = company_dir / f"application_{safe_company}.txt"
+        with open(combined_path, "w", encoding="utf-8") as f:
+            f.write(combined_text)
+        
+        # Also append to a run-level combined file for convenience
+        all_combined_path = output_dir / "applications_combined.txt"
+        with open(all_combined_path, "a", encoding="utf-8") as f:
+            f.write(f"{'=' * 80}\n")
+            f.write(combined_text)
+        
         # Save metadata
         metadata_path = company_dir / f"metadata_{safe_company}.json"
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(application.to_dict(), f, indent=2)
         
+        # Track application in CSV
+        self._append_to_applications_csv(application, output_dir, company_dir, safe_company)
+        
         logger.info(f"  Saved application materials to {company_dir}")
+    
+    def _append_to_applications_csv(
+        self, 
+        application: JobApplication, 
+        output_dir: Path, 
+        company_dir: Path,
+        safe_company: str
+    ) -> None:
+        """
+        Append application details to a CSV file for easy tracking.
+        
+        CSV includes: Company, Title, Location, Job URL, Score, Status,
+        Resume Path, Cover Letter Path, Generated At, Submitted At
+        """
+        csv_path = output_dir / "applications_tracker.csv"
+        
+        # Determine file paths
+        safe_title = "".join(c if c.isalnum() else "_" for c in (application.title or "resume"))
+        
+        # Resume path (prefer PDF, fallback to TXT)
+        pdf_path = output_dir / "tailored_resumes" / f"{safe_company}_{safe_title}.pdf"
+        resume_path = str(pdf_path.relative_to(output_dir)) if pdf_path.exists() else ""
+        if not resume_path:
+            txt_path = company_dir / f"resume_{safe_company}.txt"
+            if txt_path.exists():
+                resume_path = str(txt_path.relative_to(output_dir))
+        
+        # Cover letter path
+        cover_letter_path = ""
+        cover_txt = company_dir / f"cover_letter_{safe_company}.txt"
+        if cover_txt.exists():
+            cover_letter_path = str(cover_txt.relative_to(output_dir))
+        
+        # Prepare CSV row
+        row_data = {
+            'Company': application.company,
+            'Title': application.title,
+            'Location': application.location,
+            'Job URL': application.url,
+            'Score': f"{application.score:.2f}",
+            'Status': application.status,
+            'Resume Path': resume_path,
+            'Cover Letter Path': cover_letter_path,
+            'Generated At': application.generated_at or '',
+            'Submitted At': application.submitted_at or '',
+            'Discovered At': application.discovered_at or '',
+            'Error': application.error or ''
+        }
+        
+        # Write header if file doesn't exist
+        file_exists = csv_path.exists()
+        
+        with open(csv_path, 'a', newline='', encoding='utf-8') as csvfile:
+            fieldnames = [
+                'Company', 'Title', 'Location', 'Job URL', 'Score', 'Status',
+                'Resume Path', 'Cover Letter Path', 'Generated At', 'Submitted At',
+                'Discovered At', 'Error'
+            ]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            if not file_exists:
+                writer.writeheader()
+            
+            writer.writerow(row_data)
+        
+        logger.debug(f"  Appended to applications_tracker.csv")
     
     def run(self, sources: List[Dict[str, str]]) -> Dict[str, Any]:
         """
@@ -616,13 +718,19 @@ def create_agent_from_config(config_path: str) -> JobApplicationAgent:
     with open(config_path, 'r') as f:
         config_dict = json.load(f)
     
+    # Allow configurable threshold and locations
+    min_score = config_dict.get("min_match_score", config_dict.get("score_threshold", 60.0))
+    target_locations = config_dict.get("target_locations") or config_dict.get("locations") or []
+
     agent_config = AgentConfig(
         resume_path=config_dict.get("resume", "input/resume.yml"),
         candidate_name=config_dict.get("cover_letter", {}).get("name", "Candidate"),
         target_roles=config_dict.get("target_roles", ["software engineer"]),
         target_companies=config_dict.get("companies", []),
+        target_locations=target_locations,
         max_jobs_to_fetch=config_dict.get("fetch_limit", 500),
         max_jobs_to_apply=config_dict.get("top", 15),
+        min_match_score=float(min_score),
         auto_generate_resume=config_dict.get("auto_tailor_resume", True),
         auto_generate_cover_letter=True,
         auto_submit=config_dict.get("autofill", {}).get("enabled", False),
