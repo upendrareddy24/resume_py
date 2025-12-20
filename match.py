@@ -1485,10 +1485,33 @@ def main() -> None:
             top_per_company_limit = int(resolved_cfg.get("top_per_company_limit", 1) or 1)
             if top_per_company_limit < 1:
                 top_per_company_limit = 1
+
+            # For threshold filtering, always allow jobs whose TITLE directly matches any target role,
+            # even if their fuzzy score is slightly below min_score. This ensures roles like
+            # "System Safety Engineer" or "Functional Safety Engineer" are never dropped.
+            raw_target_roles = resolved_cfg.get("target_roles", []) or []
+            title_role_matches: list[str] = []
+            for role in raw_target_roles:
+                if not role:
+                    continue
+                role_norm = str(role).strip().lower()
+                if role_norm:
+                    title_role_matches.append(role_norm)
             
+            def _passes_score_or_title_match(job: dict[str, Any]) -> bool:
+                s = float(job.get("score", 0) or 0)
+                if s >= score_threshold:
+                    return True
+                title_lower = (job.get("title") or "").lower()
+                if title_lower and title_role_matches:
+                    for role_pattern in title_role_matches:
+                        if role_pattern and role_pattern in title_lower:
+                            return True
+                return False
+
             top_window = top[:top_n]
             print(f"[filter] Starting with {len(top_window)} jobs")
-            print(f"[filter] Filtering jobs with score >= {score_threshold}")
+            print(f"[filter] Filtering jobs with score >= {score_threshold} (or direct title match to target_roles)")
             
             # Debug: Log URL availability before filtering
             jobs_with_urls = sum(1 for j in top_window if j.get("url"))
@@ -1500,8 +1523,8 @@ def main() -> None:
             if top_per_company:
                 print(f"[filter] Top per company mode: Will select only highest scoring job from each company")
             
-            # Filter by score
-            filtered_jobs = [j for j in top_window if j.get("score", 0) >= score_threshold]
+            # Filter by score (with title-based override for strong target role matches)
+            filtered_jobs = [j for j in top_window if _passes_score_or_title_match(j)]
             print(f"[filter] After score filter: {len(filtered_jobs)} jobs (removed {len(top_window) - len(filtered_jobs)})")
             
             # Debug: Log URL availability after score filter

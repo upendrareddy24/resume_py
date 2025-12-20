@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 from pathlib import Path
 from typing import Any, Dict, List
@@ -126,7 +127,23 @@ def main() -> None:
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(links, f, indent=2)
 
-    print(f"Wrote {len(links)} unique job links to {output_path}")
+    # Also write a CSV next to the JSON for easy viewing/filtering
+    csv_path = output_path.with_suffix(".csv")
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        # Columns: job role (title), company, location, URL, score, source
+        writer.writerow(["title", "company", "location", "url", "score", "source"])
+        for row in links:
+            writer.writerow([
+                row.get("title", ""),
+                row.get("company", ""),
+                row.get("location", ""),
+                row.get("url", ""),
+                row.get("score", ""),
+                row.get("source", ""),
+            ])
+
+    print(f"Wrote {len(links)} unique job links to {output_path} and {csv_path}")
 
 
 if __name__ == "__main__":
