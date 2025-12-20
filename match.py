@@ -778,6 +778,31 @@ def check_sponsorship_available(jd_text: str, check_enabled: bool = False) -> bo
     return True  # Sponsorship likely available
 
 
+def _title_matches_target_role(title: str, target_roles: list[str], min_ratio: float = 0.65) -> bool:
+    """
+    Lenient fuzzy match between a job title and any target role.
+    Uses rapidfuzz token_set_ratio scaled to 0–1. min_ratio ~0.65 = 65%+ similarity.
+    """
+    if not title or not target_roles:
+        return False
+    title_clean = tokenize_for_fuzz(title)
+    if not title_clean:
+        return False
+    for role in target_roles:
+        if not role:
+            continue
+        role_clean = tokenize_for_fuzz(str(role))
+        if not role_clean:
+            continue
+        try:
+            ratio = fuzz.token_set_ratio(title_clean, role_clean) / 100.0
+        except Exception:
+            ratio = 0.0
+        if ratio >= min_ratio:
+            return True
+    return False
+
+
 def keyword_matches_job(job: dict[str, Any], target_roles: list[str], resume_skills: set[str]) -> bool:
     """
     Check if job title/description matches target roles or resume skills.
@@ -790,15 +815,14 @@ def keyword_matches_job(job: dict[str, Any], target_roles: list[str], resume_ski
     Returns:
         True if job matches keywords
     """
-    title_lower = (job.get("title") or "").lower()
+    title = job.get("title") or ""
+    title_lower = title.lower()
     desc_lower = (job.get("description") or "").lower()
     company_lower = (job.get("company") or "").lower()
     
-    # Check if title matches any target role
-    for role in target_roles:
-        role_lower = role.lower()
-        if role_lower in title_lower:
-            return True
+    # Check if title approximately matches any target role (lenient fuzzy match)
+    if _title_matches_target_role(title, target_roles):
+        return True
     
     # Check if key skills appear in title or short description
     if resume_skills:
@@ -1634,27 +1658,19 @@ def main() -> None:
             if top_per_company_limit < 1:
                 top_per_company_limit = 1
 
-            # For threshold filtering, always allow jobs whose TITLE directly matches any target role,
-            # even if their fuzzy score is slightly below min_score. This ensures roles like
-            # "System Safety Engineer" or "Functional Safety Engineer" are never dropped.
+            # For threshold filtering, always allow jobs whose TITLE approximately matches
+            # any target role (lenient fuzzy match), even if their fuzzy score is slightly
+            # below min_score. This ensures roles like "System Safety Engineer" or
+            # "Functional Safety Engineer" are never dropped.
             raw_target_roles = resolved_cfg.get("target_roles", []) or []
-            title_role_matches: list[str] = []
-            for role in raw_target_roles:
-                if not role:
-                    continue
-                role_norm = str(role).strip().lower()
-                if role_norm:
-                    title_role_matches.append(role_norm)
-            
+
             def _passes_score_or_title_match(job: dict[str, Any]) -> bool:
                 s = float(job.get("score", 0) or 0)
                 if s >= score_threshold:
                     return True
-                title_lower = (job.get("title") or "").lower()
-                if title_lower and title_role_matches:
-                    for role_pattern in title_role_matches:
-                        if role_pattern and role_pattern in title_lower:
-                            return True
+                title_val = job.get("title") or ""
+                if _title_matches_target_role(title_val, raw_target_roles, min_ratio=0.6):
+                    return True
                 return False
 
             top_window = top[:top_n]
