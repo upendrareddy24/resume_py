@@ -212,9 +212,9 @@ def build_query_from_resume(resume_text: str, max_terms: int = 12) -> str:
     
     Strategy:
       - tokenize the resume
-      - count word frequencies
+      - count word and 2-word phrase frequencies
       - drop very common stopwords and very short tokens
-      - take the top-N most frequent remaining terms
+      - take the top-N most frequent phrases/words
     """
     from collections import Counter
 
@@ -231,21 +231,40 @@ def build_query_from_resume(resume_text: str, max_terms: int = 12) -> str:
         "years", "year", "work", "working", "team", "teams",
     }
 
-    # Count token frequencies, ignoring very short or stopword tokens
-    counter = Counter(
-        t for t in tokens
-        if len(t) > 3 and t not in stopwords
-    )
-    if not counter:
-        # Fallback: take unique tokens as-is
-        unique_tokens = []
-        for t in tokens:
-            if len(t) > 3 and t not in unique_tokens:
-                unique_tokens.append(t)
-        return "|".join(unique_tokens[:max_terms])
+    filtered = [t for t in tokens if len(t) > 3 and t not in stopwords]
+    if not filtered:
+        return ""
 
-    ordered_terms = [t for (t, _) in counter.most_common(max_terms)]
-    return "|".join(ordered_terms)
+    # 1-gram frequencies
+    uni_counter = Counter(filtered)
+
+    # 2-gram (bigram) frequencies, built from adjacent tokens
+    bigrams: list[str] = []
+    for i in range(len(filtered) - 1):
+        w1, w2 = filtered[i], filtered[i + 1]
+        if w1 in stopwords or w2 in stopwords:
+            continue
+        phrase = f"{w1} {w2}"
+        bigrams.append(phrase)
+    bi_counter = Counter(bigrams)
+
+    # Build final list preferring bigrams, then unigrams
+    terms: list[str] = []
+
+    for phrase, _ in bi_counter.most_common(max_terms):
+        if phrase not in terms:
+            terms.append(phrase)
+        if len(terms) >= max_terms:
+            break
+
+    if len(terms) < max_terms:
+        for word, _ in uni_counter.most_common(max_terms):
+            if word not in terms:
+                terms.append(word)
+            if len(terms) >= max_terms:
+                break
+
+    return "|".join(terms[:max_terms])
 
 
 ## cover-letter free text generation now lives in CoverLetterBuilder.compose_concise_text
@@ -1224,6 +1243,43 @@ def main() -> None:
             out_path = str(Path(here / out_dir / f"{prefix}_{stamp}.json"))
 
     resume_text, resume_structured = load_resume_data(resume_file)
+
+    # Automatically enrich target_roles from structured resume (YAML) if available.
+    # This pulls role titles from basics.label and work[].position/title, then merges
+    # them with any target_roles already present in the config.
+    if resume_structured and isinstance(resume_structured, dict):
+        auto_roles: list[str] = []
+        basics = resume_structured.get("basics") or {}
+        label = basics.get("label") or basics.get("title")
+        if isinstance(label, str) and label.strip():
+            auto_roles.append(label.strip())
+        work_entries = resume_structured.get("work") or []
+        if isinstance(work_entries, list):
+            for job in work_entries:
+                if not isinstance(job, dict):
+                    continue
+                role = job.get("position") or job.get("title")
+                if isinstance(role, str) and role.strip():
+                    auto_roles.append(role.strip())
+
+        # Merge with existing target_roles from config, de-duplicated (case-insensitive)
+        existing_roles = resolved_cfg.get("target_roles") or []
+        merged: list[str] = []
+        seen_lower: set[str] = set()
+        for role in list(existing_roles) + auto_roles:
+            if not role:
+                continue
+            role_str = str(role).strip()
+            if not role_str:
+                continue
+            key = role_str.lower()
+            if key in seen_lower:
+                continue
+            seen_lower.add(key)
+            merged.append(role_str)
+        if merged:
+            resolved_cfg["target_roles"] = merged
+
     # If no explicit query provided, derive it from the resume content
     if not query:
         try:
@@ -1297,10 +1353,27 @@ def main() -> None:
 
     # Enrich jobs with full descriptions based on keyword matching
     target_roles = resolved_cfg.get("target_roles", [])
-    # Extract AUTOMOTIVE / SAFETY / SYSTEMS skills from resume for keyword matching
-    resume_skills = set()
+    # Extract AUTOMOTIVE / SAFETY / SYSTEMS skills from the resume itself.
+    resume_skills: set[str] = set()
+
+    # 1) Prefer structured skills from YAML (input/resume.yml)
+    if resume_structured and isinstance(resume_structured, dict):
+        skills_section = resume_structured.get("skills") or []
+        if isinstance(skills_section, list):
+            for group in skills_section:
+                if not isinstance(group, dict):
+                    continue
+                for kw in group.get("keywords") or []:
+                    if not kw:
+                        continue
+                    kw_str = str(kw).strip()
+                    if not kw_str:
+                        continue
+                    resume_skills.add(kw_str.lower())
+
+    # 2) Fallback / complement: scan free text for common automotive/safety terms
     resume_lower = resume_text.lower()
-    automotive_skills = {
+    automotive_terms = {
         "automotive", "vehicle", "ev", "electric", "hybrid", "powertrain", "chassis",
         "braking", "steering", "ecu", "can", "lin", "flexray", "ethernet", "autosar",
         "embedded", "controller", "sensor", "actuator",
@@ -1313,9 +1386,35 @@ def main() -> None:
         "sysml", "uml", "mbse", "v-model", "verification", "validation", "integration", "test",
         "hil", "hardware-in-the-loop", "sil", "mil",
     }
-    for skill in automotive_skills:
-        if skill in resume_lower:
-            resume_skills.add(skill)
+    for term in automotive_terms:
+        if term in resume_lower:
+            resume_skills.add(term)
+
+    # 3) Highlighted terms: any words/phrases in the original resume text that
+    # contain uppercase letters (e.g., "ISO 26262", "ADAS", "Functional Safety").
+    # These are treated as strong domain keywords.
+    import re as _re_for_highlights
+    highlighted: set[str] = set()
+    # Split on whitespace, keep raw tokens to preserve capitalization and punctuation
+    raw_tokens = (resume_text or "").split()
+    for tok in raw_tokens:
+        if not tok:
+            continue
+        # Strip common surrounding punctuation
+        cleaned = tok.strip(".,;:()[]{}<>\"'")
+        if len(cleaned) < 3:
+            continue
+        # Skip plain lowercase words (no uppercase at all)
+        if not any(ch.isupper() for ch in cleaned):
+            continue
+        # Skip obvious sentence-start articles/pronouns
+        if cleaned in {"The", "This", "That", "These", "Those", "And", "But"}:
+            continue
+        # Normalize to lowercase keyword
+        highlighted.add(cleaned.lower())
+
+    for kw in highlighted:
+        resume_skills.add(kw)
     
     print(f"\n[keyword-match] Resume skills detected: {sorted(list(resume_skills)[:20])}")
     print(f"[keyword-match] Target roles: {target_roles[:10]}")
