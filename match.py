@@ -183,24 +183,69 @@ def tokenize_for_fuzz(text: str) -> str:
     return " ".join(t for t in text.split() if len(t) > 1)
 
 
-# Basic tech/role keywords to mine from resume text when no explicit query is provided
+# Domain keywords to mine from resume text when no explicit query is provided.
+# For this project we focus on AUTOMOTIVE / SAFETY / SYSTEMS roles (not generic coding).
 RESUME_KEYWORDS = [
-    "python","java","c++","c#","javascript","typescript","go","rust","sql","nosql",
-    "ml","ai","machine","learning","deep","pytorch","tensorflow","keras","sklearn","scikit",
-    "data","engineer","scientist","analytics","pipeline","etl","airflow","dbt",
-    "aws","azure","gcp","lambda","sagemaker","cloudformation","dynamodb","s3","ec2","kinesis",
-    "docker","kubernetes","terraform","jenkins","ansible","gitlab","github","bitbucket",
-    "graphql","rest","api","django","flask","fastapi","react","nextjs","node","spark","hadoop"
+    # Core domain
+    "automotive", "vehicle", "ev", "electric", "hybrid", "powertrain", "chassis",
+    "braking", "steering", "ecu", "can", "lin", "flexray", "ethernet", "autosar",
+    "embedded", "controller", "sensor", "actuator",
+    # ADAS / autonomous
+    "adas", "autonomous", "self-driving", "selfdriving", "autonomy",
+    "perception", "sensorfusion", "sensor-fusion", "lane", "adaptive", "cruise",
+    # Safety / systems engineering
+    "functional", "safety", "functional-safety", "system-safety", "systems",
+    "systems-engineering", "systems engineer", "system engineer",
+    "iso26262", "iso 26262", "asil", "hara", "fmea", "dfmea", "pfmea", "fta",
+    "safety-case", "safety case", "sotif", "iec61508", "arp4754",
+    # Requirements / MBSE / tools
+    "requirements", "requirement", "doors", "polarion", "jama",
+    "sysml", "uml", "mbse", "v-model", "verification", "validation", "integration", "test",
+    "hil", "hardware-in-the-loop", "sil", "mil",
 ]
 
 
 def build_query_from_resume(resume_text: str, max_terms: int = 12) -> str:
-    tokens = set(tokenize_for_fuzz(resume_text).split())
-    matched = [kw for kw in RESUME_KEYWORDS if kw in tokens]
-    if not matched:
-        # fallback to a few generic role terms
-        matched = [t for t in tokens if len(t) > 3][:max_terms]
-    return "|".join(matched[:max_terms])
+    """
+    Automatically derive a search query from the resume text, without requiring
+    a hard-coded keyword list.
+    
+    Strategy:
+      - tokenize the resume
+      - count word frequencies
+      - drop very common stopwords and very short tokens
+      - take the top-N most frequent remaining terms
+    """
+    from collections import Counter
+
+    tokens = tokenize_for_fuzz(resume_text).split()
+    if not tokens:
+        return ""
+
+    # Very small stopword list; this keeps implementation simple and domain-agnostic
+    stopwords = {
+        "the", "and", "for", "with", "that", "this", "from", "have", "will",
+        "your", "their", "they", "them", "into", "over", "under", "above",
+        "below", "more", "less", "than", "such", "including", "across",
+        "within", "between", "other", "role", "responsible", "experience",
+        "years", "year", "work", "working", "team", "teams",
+    }
+
+    # Count token frequencies, ignoring very short or stopword tokens
+    counter = Counter(
+        t for t in tokens
+        if len(t) > 3 and t not in stopwords
+    )
+    if not counter:
+        # Fallback: take unique tokens as-is
+        unique_tokens = []
+        for t in tokens:
+            if len(t) > 3 and t not in unique_tokens:
+                unique_tokens.append(t)
+        return "|".join(unique_tokens[:max_terms])
+
+    ordered_terms = [t for (t, _) in counter.most_common(max_terms)]
+    return "|".join(ordered_terms)
 
 
 ## cover-letter free text generation now lives in CoverLetterBuilder.compose_concise_text
@@ -1252,19 +1297,23 @@ def main() -> None:
 
     # Enrich jobs with full descriptions based on keyword matching
     target_roles = resolved_cfg.get("target_roles", [])
-    # Extract skills from resume for keyword matching
+    # Extract AUTOMOTIVE / SAFETY / SYSTEMS skills from resume for keyword matching
     resume_skills = set()
     resume_lower = resume_text.lower()
-    common_skills = {
-        "python", "java", "javascript", "typescript", "c++", "go", "rust", "scala",
-        "react", "angular", "vue", "node", "django", "flask", "spring",
-        "tensorflow", "pytorch", "keras", "scikit-learn", "pandas", "numpy",
-        "aws", "azure", "gcp", "kubernetes", "docker", "terraform",
-        "sql", "postgresql", "mysql", "mongodb", "redis", "elasticsearch",
-        "kafka", "spark", "airflow", "mlflow", "kubeflow",
-        "machine learning", "deep learning", "nlp", "computer vision", "mlops"
+    automotive_skills = {
+        "automotive", "vehicle", "ev", "electric", "hybrid", "powertrain", "chassis",
+        "braking", "steering", "ecu", "can", "lin", "flexray", "ethernet", "autosar",
+        "embedded", "controller", "sensor", "actuator",
+        "adas", "autonomous", "self-driving", "selfdriving", "autonomy",
+        "perception", "sensor fusion", "sensor-fusion", "lane", "adaptive cruise",
+        "functional safety", "system safety", "systems engineering", "systems engineer",
+        "iso 26262", "iso26262", "asil", "hara", "fmea", "dfmea", "pfmea", "fta",
+        "safety case", "safety-case", "sotif", "iec 61508", "iec61508", "arp4754",
+        "requirements", "requirement", "doors", "polarion", "jama",
+        "sysml", "uml", "mbse", "v-model", "verification", "validation", "integration", "test",
+        "hil", "hardware-in-the-loop", "sil", "mil",
     }
-    for skill in common_skills:
+    for skill in automotive_skills:
         if skill in resume_lower:
             resume_skills.add(skill)
     
