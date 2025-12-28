@@ -22,7 +22,7 @@ concurrency:
 jobs:
   match-jobs:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # Increased to 120 minutes (2 hours)
+    timeout-minutes: 70  # Allow up to 70 minutes to exceed inner step timeout
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,33 +45,31 @@ jobs:
           chrome-version: stable
 
       - name: Run matcher with config
-        timeout-minutes: 110  # Timeout after 110 minutes (leaving buffer for cleanup)
+        timeout-minutes: 60  # Timeout after 60 minutes
         env:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_RESUME_MODEL: "gemini-2.0-flash-exp"
+          GEMINI_RESUME_MODEL: "gemini-2.5-flash"
           OPENAI_EMBED_MODEL: "text-embedding-3-small"
           PYTHONUNBUFFERED: "1"
         run: |
           echo "🚀 Starting job matcher..."
           echo "Config: ${{ inputs.config_path || 'config.json' }}"
-          echo "⏰ Timeout: 110 minutes"
+          echo "⏰ Timeout: 60 minutes"
           echo ""
           
-          # Run with verbose output and timeout (6600 seconds = 110 minutes)
-          timeout 6600 python match.py --config "${{ inputs.config_path || 'config.json' }}" 2>&1 | tee match.log || {
+          # Run with verbose output and timeout (3600 seconds = 60 minutes)
+          timeout 3600 python match.py --config "${{ inputs.config_path || 'config.json' }}" 2>&1 | tee match.log || {
             EXIT_CODE=$?
             if [ $EXIT_CODE -eq 124 ]; then
               echo ""
-              echo "❌ ERROR: Process timed out after 110 minutes!"
+              echo "❌ ERROR: Process timed out after 60 minutes!"
               echo "This usually means:"
-              echo "  - Too many jobs to process (reduce fetch_limit in config)"
+              echo "  - Too many jobs to process"
               echo "  - Selenium pages taking too long to load"
-              echo "  - Job description fetching is slow"
-              echo "  - Try reducing parallel_workers or fetch_limit"
-              echo ""
-              echo "💡 Suggestion: Set fetch_limit to 50 in config.json"
+              echo "  - LLM calls are slow or hanging"
+              echo "  - Network issues fetching job descriptions"
               exit 1
             else
               exit $EXIT_CODE
@@ -126,16 +124,6 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📊 Total Generated: $(($COVER_COUNT + $RESUME_COUNT + $PARSED_COUNT + $SUMMARY_COUNT)) files"
           
-          # Check for applications tracker CSV
-          echo ""
-          if [ -f "output/applications_tracker.csv" ]; then
-            APP_TRACK_COUNT=$(tail -n +2 output/applications_tracker.csv 2>/dev/null | wc -l | tr -d ' ')
-            echo "📋 Applications Tracker CSV: $APP_TRACK_COUNT applications tracked"
-            echo "   File: output/applications_tracker.csv"
-          else
-            echo "📋 Applications Tracker CSV: Not generated yet"
-          fi
-          
           echo ""
           echo "📊 Job description lengths:"
           if [ -d "output" ]; then
@@ -169,15 +157,6 @@ jobs:
           path: output/*.csv
           if-no-files-found: warn
           retention-days: 7
-      
-      - name: Upload Applications Tracker CSV
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: applications-tracker-${{ github.run_id }}-${{ github.run_attempt }}
-          path: output/applications_tracker.csv
-          if-no-files-found: warn
-          retention-days: 30
 
       - name: Upload cover letters artifact
         if: always()
@@ -306,12 +285,6 @@ jobs:
             echo "- **Job Summaries**: $SUMMARY_COUNT" >> $GITHUB_STEP_SUMMARY
           fi
           
-          # Show CSV tracker info
-          if [ -f "output/applications_tracker.csv" ]; then
-            CSV_COUNT=$(tail -n +2 output/applications_tracker.csv 2>/dev/null | wc -l)
-            echo "- **Applications Tracked (CSV)**: $CSV_COUNT" >> $GITHUB_STEP_SUMMARY
-          fi
-          
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📝 Generated Files List" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -331,24 +304,3 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          
-          # Show Applications Tracker CSV summary
-          if [ -f "output/applications_tracker.csv" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📊 Applications Tracker Summary" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Download the **applications-tracker** artifact for the complete CSV file." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "The CSV contains:" >> $GITHUB_STEP_SUMMARY
-            echo "- Job URLs (direct links to apply)" >> $GITHUB_STEP_SUMMARY
-            echo "- Resume & Cover Letter file paths" >> $GITHUB_STEP_SUMMARY
-            echo "- Match scores & application status" >> $GITHUB_STEP_SUMMARY
-            echo "- Timestamps for tracking" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            
-            # Show CSV row count
-            CSV_ROWS=$(tail -n +2 output/applications_tracker.csv 2>/dev/null | wc -l | tr -d ' ')
-            echo "**Total Applications Tracked:** $CSV_ROWS" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-

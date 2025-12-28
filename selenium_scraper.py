@@ -119,7 +119,10 @@ def fetch_selenium_sites(sites: list[Any], fetch_limit: int) -> list[dict[str, A
             loc_sel = site.get("location_selector") or ""
             link_sel = site.get("link_selector") or "a"
             desc_sel = site.get("description_selector") or ""
-            source = site.get("source") or f"selenium:{url.split('/')[2]}"
+            if url and len(url.split('/')) > 2:
+                source = site.get("source") or f"selenium:{url.split('/')[2]}"
+            else:
+                source = site.get("source") or f"selenium:site"
             careers_url = site.get("careers_url") or url
             domain_filter = site.get("domain_filter") or ""
             require_path_contains = site.get("require_path_contains") or ""
