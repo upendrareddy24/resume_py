@@ -2,7 +2,7 @@
   "resume": "input/resume.yml",
   "top": 10,
   "country": "usa",
-  "fetch_limit": 100,
+  "fetch_limit": 10,
   "min_score": 40,
   "top_per_company": true,
   "top_per_company_limit": 5,
@@ -559,7 +559,7 @@
       },
       {
         "company": "forvia",
-        "url": "https://hella.csod.com/ux/ats/careersite/3/home?c=hella&city=northville%2C%20michigan&lang=en-US",
+        "url": "https://hella.csod.com/ux/ats/careersite/3/home?c=hella&cfdd[0][id]=87&cfdd[0][options][0]=254&country=us&lang=en-US",
         "list_selector": "a[href*='job'], a[href*='/job/'], a[href*='/jobs'], li[class*='job'], div[class*='job'], article[class*='job']",
         "title_selector": "h2, h3, a[href*='job'], a[href*='/job/'], a[href*='/jobs']",
         "location_selector": "span[class*='location'], div[class*='location'], [class*='location']",
