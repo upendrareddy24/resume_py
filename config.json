@@ -2,7 +2,7 @@
   "resume": "input/resume.yml",
   "top": 10,
   "country": "usa",
-  "fetch_limit": 10,
+  "fetch_limit": 30,
   "min_score": 40,
   "top_per_company": true,
   "top_per_company_limit": 5,
